@@ -23,6 +23,9 @@ build/
 .firebase/
 .firebase/*
 
+# Firebase config (contains API keys)
+sensor-dashboard/src/firebase.ts
+
 # Firebase logs
 firebase-debug.log
 firestore-debug.log
