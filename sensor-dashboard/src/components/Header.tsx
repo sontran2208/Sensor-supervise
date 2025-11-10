@@ -1,8 +1,8 @@
 import { useEdgeAI } from '../hooks/useEdgeAI'
-import { BarChart3, Brain, Activity, AlertTriangle, TrendingUp } from 'lucide-react'
+import { BarChart3, Brain, Activity, AlertTriangle } from 'lucide-react'
 import { motion } from 'framer-motion'
 
-type Page = "dashboard" | "ai";
+type Page = "dashboard" | "ai" | "camera";
 
 interface HeaderProps {
   currentPage: Page;
@@ -14,19 +14,6 @@ export default function Header({ currentPage, onPageChange }: HeaderProps) {
   
   // Get AI system status
   const { systemStatus } = useEdgeAI();
-
-  const getHealthColor = (health: string) => {
-    switch (health) {
-      case 'healthy':
-        return 'bg-green-100 text-green-800 border-green-300'
-      case 'warning':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-300'
-      case 'critical':
-        return 'bg-red-100 text-red-800 border-red-300'
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-300'
-    }
-  }
 
   const getStatusDot = (isRunning: boolean, health: string) => {
     if (!isRunning) return '🔴'

@@ -1,5 +1,16 @@
 # Hướng dẫn Deploy Frontend lên GitHub Pages
 
+## 💰 HOÀN TOÀN MIỄN PHÍ!
+
+Tất cả các dịch vụ dưới đây đều **MIỄN PHÍ 100%** cho dự án cá nhân:
+- ✅ **GitHub Pages**: Miễn phí không giới hạn cho public repositories
+- ✅ **Vercel**: Miễn phí với bandwidth và build time hào phóng
+- ✅ **Netlify**: Miễn phí với 100GB bandwidth/tháng
+
+**Không cần thẻ tín dụng, không cần trả tiền!**
+
+---
+
 ## Bước 1: Enable GitHub Pages trong Repository Settings
 
 1. Vào repository trên GitHub: `https://github.com/sontran2208/Sensor-supervise`

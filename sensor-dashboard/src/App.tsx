@@ -27,7 +27,7 @@ import { useGas } from "./hooks/useGas";
 import { useEdgeAI } from "./hooks/useEdgeAI";
 
 type Sensor = "temperature" | "light" | "distance" | "gps" | "gas";
-type Page = "dashboard" | "ai";
+type Page = "dashboard" | "ai" | "camera";
 
 // ===== Constants =====
 const FEED_MS = 5000;

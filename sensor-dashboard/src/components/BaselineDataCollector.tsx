@@ -33,7 +33,7 @@ export default function BaselineDataCollector() {
       tempData.forEach(d => {
         readings.push({
           timestamp: d.timestamp,
-          value: d.temperature,
+          value: d.value,
           sensorType: 'temperature'
         })
       })
@@ -41,7 +41,7 @@ export default function BaselineDataCollector() {
       lightData.forEach(d => {
         readings.push({
           timestamp: d.timestamp,
-          value: d.light,
+          value: d.value,
           sensorType: 'light'
         })
       })
@@ -49,7 +49,7 @@ export default function BaselineDataCollector() {
       distanceData.forEach(d => {
         readings.push({
           timestamp: d.timestamp,
-          value: d.distance,
+          value: d.value,
           sensorType: 'distance'
         })
       })
@@ -65,8 +65,8 @@ export default function BaselineDataCollector() {
       })
       
       gasData.forEach(d => {
-        // Composite gas value
-        const composite = (d.co2 || 0) * 0.4 + (d.tvoc || 0) * 0.3 + (d.iaq || 0) * 0.3
+        // Composite gas value using available properties
+        const composite = (d.co2 || 0) * 0.4 + (d.smoke || 0) * 0.3 + (d.airQuality || 0) * 0.3
         readings.push({
           timestamp: d.timestamp,
           value: composite,

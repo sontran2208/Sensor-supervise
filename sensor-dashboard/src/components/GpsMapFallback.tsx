@@ -81,7 +81,7 @@ export default function GpsMapFallback({ data }: Props) {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {data.slice(0, 10).map((point, index) => (
+              {data.slice(0, 10).map((point) => (
                 <tr key={point.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {new Date(point.timestamp).toLocaleString()}

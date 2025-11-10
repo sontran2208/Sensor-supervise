@@ -213,7 +213,7 @@ export class SensorManager {
     this.detectionInterval = setInterval(async () => {
       const allData = this.getAllRecentSensorData()
       if (allData.length > 0) {
-        const anomalyResult = await this.detector.detectAnomaly(allData)
+        await this.detector.detectAnomaly(allData)
         
         // Suppress console spam during periodic detection; alerts are already throttled elsewhere
       }
@@ -225,13 +225,6 @@ export class SensorManager {
       clearInterval(this.detectionInterval)
       this.detectionInterval = null
     }
-  }
-
-  private applyOptimizations(optimizations: SensorOptimization[]): void {
-    optimizations.forEach(opt => {
-      this.optimizationRules.set(opt.sensorType, opt)
-      console.log(`🔧 Applied optimization for ${opt.sensorType}:`, opt)
-    })
   }
 
   public getOptimizationForSensor(sensorType: string): SensorOptimization | null {
