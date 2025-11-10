@@ -51,3 +51,7 @@ functions/.runtimeconfig.json
 *.log
 
 
+
+# Ignore guides
+DEPLOY_GUIDE.md
+sensor-dashboard/BASELINE_TRAINING_GUIDE.md
