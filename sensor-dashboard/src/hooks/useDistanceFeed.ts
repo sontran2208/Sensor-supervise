@@ -4,7 +4,12 @@ import { db, firebaseConfigured, type DistanceRecord } from '../firebase';
 
 export type DistanceDoc = DistanceRecord & { id: string };
 
-export function useDistanceFeed(maxItems: number = 200) {
+export function useDistanceFeed(
+  maxItems: number = 200,
+  timeRangeMinutes?: number,
+  startDate?: Date,
+  endDate?: Date
+) {
   const [data, setData] = useState<DistanceDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +21,9 @@ export function useDistanceFeed(maxItems: number = 200) {
       return;
     }
     const ref = collection(db, 'distance');
-    const q = query(ref, orderBy('timestamp', 'desc'), limit(maxItems));
+    const needsFiltering = Boolean(timeRangeMinutes || (startDate && endDate));
+    const fetchLimit = needsFiltering ? Math.max(maxItems * 4, 400) : maxItems;
+    const q = query(ref, orderBy('timestamp', 'desc'), limit(fetchLimit));
     const unsub = onSnapshot(
       q,
       (snap) => {
@@ -36,8 +43,23 @@ export function useDistanceFeed(maxItems: number = 200) {
             return { id: d.id, timestamp: ts, value } as DistanceDoc;
           })
           .filter(Boolean) as DistanceDoc[];
-        items.sort((a, b) => a.timestamp - b.timestamp);
-        setData(items);
+        let filtered = items;
+        if (timeRangeMinutes) {
+          const now = Date.now();
+          const startTime = now - (timeRangeMinutes * 60 * 1000);
+          filtered = filtered.filter(item => item.timestamp >= startTime);
+        } else if (startDate && endDate) {
+          const startTime = startDate.getTime();
+          const endTime = endDate.getTime();
+          filtered = filtered.filter(item => item.timestamp >= startTime && item.timestamp <= endTime);
+        }
+
+        filtered.sort((a, b) => a.timestamp - b.timestamp);
+        if (filtered.length > maxItems) {
+          filtered = filtered.slice(-maxItems);
+        }
+
+        setData(filtered);
         setLoading(false);
       },
       (err) => {
@@ -46,7 +68,7 @@ export function useDistanceFeed(maxItems: number = 200) {
       }
     );
     return () => unsub();
-  }, [maxItems]);
+  }, [maxItems, timeRangeMinutes, startDate, endDate]);
 
   const latest = useMemo(() => (data.length ? data[data.length - 1] : null), [data]);
 

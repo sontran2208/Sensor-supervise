@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useTemperature } from "./hooks/useTemperature";
 import TemperatureTable from "./components/TemperatureTable";
 import TemperatureChart from "./components/TemperatureChart";
@@ -6,76 +6,295 @@ import LightChart from "./components/LightChart";
 import LightTable from "./components/LightTable";
 import DistanceChart from "./components/DistanceChart";
 import DistanceTable from "./components/DistanceTable";
+import GpsChart from "./components/GpsChart";
+import GpsTable from "./components/GpsTable";
+import FreeGpsMap from "./components/FreeGpsMap";
+import GasChart from "./components/GasChart";
+import GasTable from "./components/GasTable";
+import GasDashboard from "./components/GasDashboard";
 import TimeRangeStats from "./components/TimeRangeStats";
-import {
-  seedTemperatureLastMinutes, seedTemperatureLastMinutesWithAnomalies,
-  seedLightLastMinutes, seedLightLastMinutesWithAnomalies,
-  seedDistanceLastMinutes, seedDistanceLastMinutesWithAnomalies
-} from "./dev/seed";
+import Header from "./components/Header";
+import EdgeAIDashboard from "./components/EdgeAIDashboard";
+import BaselineDataCollector from "./components/BaselineDataCollector";
+import FakeESPSimulator from "./components/FakeESPSimulator";
+import toast from "react-hot-toast";
+import { motion } from "framer-motion";
 import { firebaseConfigured } from "./firebase";
 import { useLight } from "./hooks/useLight";
 import { useDistance } from "./hooks/useDistance";
+import { useGps } from "./hooks/useGps";
+import { useGas } from "./hooks/useGas";
+import { useEdgeAI } from "./hooks/useEdgeAI";
 
-type Sensor = "temperature" | "light" | "distance";
+type Sensor = "temperature" | "light" | "distance" | "gps" | "gas";
+type Page = "dashboard" | "ai";
+
+// ===== Constants =====
+const FEED_MS = 5000;
+const RECENT_WINDOW_MS = 60_000;
+const MAX_SAMPLES_PER_FEED = 50; // Tăng số mẫu để phát hiện drift tốt hơn
+const GPS_MAX_MPS = 100; // clamp vật lý ~360 km/h
 
 export default function App() {
+  // ---- State/UI ----
+  const [currentPage, setCurrentPage] = useState<Page>("dashboard");
   const [selectedTimeRange, setSelectedTimeRange] = useState(30); // minutes
   const [sensor, setSensor] = useState<Sensor>("temperature");
+  const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
+  const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
 
-  if (!firebaseConfigured) {
+  // ---- Edge AI ----
+  const { processSensorData, alerts, systemStatus } = useEdgeAI();
+
+  // ---- Feed dedup markers ----
+  const lastSentRef = useRef<Record<string, number>>({
+    temperature: 0, light: 0, distance: 0, gas: 0, gps: 0
+  });
+
+  // ---- Simulator ----
+  // Calculate useCustom before hooks
+  const useCustom = Boolean(customStartDate && customEndDate);
+  const cutoff = useMemo(
+    () => Date.now() - selectedTimeRange * 60 * 1000,
+    [selectedTimeRange]
+  );
+
+  // ---- Data hooks (luôn gọi trước mọi early return) ----
+  // Pass timeRangeMinutes to query only recent data from Firestore (server-side filter)
+  const { data: tempData = [], loading, error } = useTemperature(200, useCustom ? undefined : selectedTimeRange, customStartDate || undefined, customEndDate || undefined);
+  const { data: lightData = [], loading: loadingLight } = useLight(200, useCustom ? undefined : selectedTimeRange, customStartDate || undefined, customEndDate || undefined);
+  const { data: distanceData = [], loading: loadingDistance } = useDistance(200, useCustom ? undefined : selectedTimeRange, customStartDate || undefined, customEndDate || undefined);
+  const { data: gpsData = [], loading: loadingGps } = useGps(200);
+  const { data: gasData = [], loading: loadingGas } = useGas(200);
+
+  const filteredTemp = useMemo(() => {
+    if (useCustom && customStartDate && customEndDate) {
+      const s = customStartDate.getTime(); const e = customEndDate.getTime();
+      return tempData.filter(d => d.timestamp >= s && d.timestamp <= e);
+    }
+    return tempData.filter(d => d.timestamp >= cutoff);
+  }, [tempData, cutoff, useCustom, customStartDate, customEndDate]);
+
+  const filteredLight = useMemo(() => {
+    if (useCustom && customStartDate && customEndDate) {
+      const s = customStartDate.getTime(); const e = customEndDate.getTime();
+      return lightData.filter(d => d.timestamp >= s && d.timestamp <= e);
+    }
+    return lightData.filter(d => d.timestamp >= cutoff);
+  }, [lightData, cutoff, useCustom, customStartDate, customEndDate]);
+
+  const filteredDistance = useMemo(() => {
+    if (useCustom && customStartDate && customEndDate) {
+      const s = customStartDate.getTime(); const e = customEndDate.getTime();
+      return distanceData.filter(d => d.timestamp >= s && d.timestamp <= e);
+    }
+    return distanceData.filter(d => d.timestamp >= cutoff);
+  }, [distanceData, cutoff, useCustom, customStartDate, customEndDate]);
+
+  const filteredGps = useMemo(() => {
+    if (useCustom && customStartDate && customEndDate) {
+      const s = customStartDate.getTime(); const e = customEndDate.getTime();
+      return gpsData.filter(d => d.timestamp >= s && d.timestamp <= e);
+    }
+    return gpsData.filter(d => d.timestamp >= cutoff);
+  }, [gpsData, cutoff, useCustom, customStartDate, customEndDate]);
+
+  const filteredGas = useMemo(() => {
+    if (useCustom && customStartDate && customEndDate) {
+      const s = customStartDate.getTime(); const e = customEndDate.getTime();
+      return gasData.filter(d => d.timestamp >= s && d.timestamp <= e);
+    }
+    return gasData.filter(d => d.timestamp >= cutoff);
+  }, [gasData, cutoff, useCustom, customStartDate, customEndDate]);
+
+  // ---- Firebase banner (không return trước hooks) ----
+  const FirebaseBanner = !firebaseConfigured ? (
+    <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
+      <p className="text-red-600 text-sm">
+        ⚠️ Chưa cấu hình Firebase (.env). Vui lòng thêm các biến VITE_FIREBASE_* rồi chạy lại dev server.
+      </p>
+    </div>
+  ) : null;
+
+  // ---- Dedup toast theo alert.id ----
+  const seenAlertIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!alerts || alerts.length === 0) return;
+    // chọn 3 alert gần nhất
+    const last3 = alerts.slice(-3);
+    last3.forEach((a: any) => {
+      if (!a?.id) return; // cần id để dedup
+      if (seenAlertIdsRef.current.has(a.id)) return;
+      seenAlertIdsRef.current.add(a.id);
+
+      const msg = `[Alert] ${a.message}`;
+      if (a.severity === "critical") toast.error(msg);
+      else if (a.severity === "high") toast(msg, { icon: "⚠️" });
+      else if (a.severity === "medium") toast(msg, { icon: "📊" });
+      else toast(msg, { icon: "ℹ️" });
+    });
+  }, [alerts]);
+
+  // ---- Refs cho dữ liệu để interval đọc ổn định (không tái tạo interval) ----
+  const tempRef = useRef<any[]>([]);
+  const lightRef = useRef<any[]>([]);
+  const distRef = useRef<any[]>([]);
+  const gasRef = useRef<any[]>([]);
+  const gpsRef = useRef<any[]>([]);
+  useEffect(() => { tempRef.current = filteredTemp }, [filteredTemp]);
+  useEffect(() => { lightRef.current = filteredLight }, [filteredLight]);
+  useEffect(() => { distRef.current = filteredDistance }, [filteredDistance]);
+  useEffect(() => { gasRef.current = filteredGas }, [filteredGas]);
+  useEffect(() => { gpsRef.current = filteredGps }, [filteredGps]);
+
+  // ---- Interval feed cố định chỉ phụ thuộc processSensorData ----
+  useEffect(() => {
+    if (!processSensorData) return;
+
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const haversineMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+      const R = 6371000;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    };
+
+    const feed = async () => {
+      const now = Date.now();
+      const readings: Array<{ timestamp: number; value: number; sensorType: Sensor }> = [];
+
+      // helper lấy mới + giới hạn tối đa MAX_SAMPLES_PER_FEED mẫu mới nhất (tăng để phát hiện drift tốt hơn)
+      const takeNew = <T extends { timestamp: number }>(arr: T[], last: number) =>
+        arr.filter(i => i.timestamp > (last || 0) && now - i.timestamp < RECENT_WINDOW_MS).slice(-MAX_SAMPLES_PER_FEED);
+
+      // Temperature
+      const tempNew = takeNew(tempRef.current, lastSentRef.current.temperature);
+      tempNew.forEach(item => readings.push({ timestamp: item.timestamp, value: item.value, sensorType: "temperature" }));
+
+      // Light
+      const lightNew = takeNew(lightRef.current, lastSentRef.current.light);
+      lightNew.forEach(item => readings.push({ timestamp: item.timestamp, value: item.value, sensorType: "light" }));
+
+      // Distance
+      const distNew = takeNew(distRef.current, lastSentRef.current.distance);
+      distNew.forEach(item => readings.push({ timestamp: item.timestamp, value: item.value, sensorType: "distance" }));
+
+      // Gas → composite (giữ nguyên logic)
+      const gasNew = takeNew(gasRef.current, lastSentRef.current.gas);
+      gasNew.forEach((item: any) => {
+        const co = Math.max(0, Number(item.co ?? 0));
+        const co2 = Math.max(0, Number(item.co2 ?? 0));
+        const smoke = Math.max(0, Number(item.smoke ?? 0));
+        const lpg = Math.max(0, Number(item.lpg ?? 0));
+        const methane = Math.max(0, Number(item.methane ?? 0));
+        const hydrogen = Math.max(0, Number(item.hydrogen ?? 0));
+        const aqi = Math.max(0, Number(item.airQuality ?? 0));
+        const ratios = [co / 20, co2 / 2400, smoke / 500, lpg / 300, methane / 2000, hydrogen / 200, aqi / 500];
+        const composite = Math.max(...ratios) * 100;
+        readings.push({ timestamp: item.timestamp, value: composite, sensorType: "gas" });
+      });
+
+      // GPS → m/s + clamp + jumpSpeed Haversine
+      const gpsArr = takeNew(gpsRef.current, lastSentRef.current.gps) as any[];
+      for (let i = 0; i < gpsArr.length; i++) {
+        const cur = gpsArr[i];
+        const prev = i > 0 ? gpsArr[i - 1] : null;
+        const rawSpeed = Number(cur?.speed ?? 0);
+        const speedMps = rawSpeed > 40 ? rawSpeed / 3.6 : rawSpeed; // km/h → m/s
+        let effectiveSpeed = speedMps;
+
+        if (prev) {
+          const dt = Math.max(0, (cur.timestamp - prev.timestamp) / 1000);
+          if (
+            dt > 0 &&
+            typeof cur.latitude === "number" && typeof cur.longitude === "number" &&
+            typeof prev.latitude === "number" && typeof prev.longitude === "number"
+          ) {
+            const dist = haversineMeters(prev.latitude, prev.longitude, cur.latitude, cur.longitude);
+            const jumpSpeed = dist / dt;
+            if (!Number.isNaN(jumpSpeed) && Number.isFinite(jumpSpeed)) {
+              effectiveSpeed = Math.max(effectiveSpeed, jumpSpeed);
+            }
+          }
+        }
+        const bounded = Math.max(0, Math.min(effectiveSpeed, GPS_MAX_MPS));
+        readings.push({ timestamp: cur.timestamp, value: bounded, sensorType: "gps" });
+      }
+
+      if (readings.length) {
+        try {
+          await processSensorData(readings as any);
+          if (tempNew.length) lastSentRef.current.temperature = Math.max(lastSentRef.current.temperature || 0, tempNew.at(-1)!.timestamp);
+          if (lightNew.length) lastSentRef.current.light = Math.max(lastSentRef.current.light || 0, lightNew.at(-1)!.timestamp);
+          if (distNew.length) lastSentRef.current.distance = Math.max(lastSentRef.current.distance || 0, distNew.at(-1)!.timestamp);
+          if (gasNew.length) lastSentRef.current.gas = Math.max(lastSentRef.current.gas || 0, gasNew.at(-1)!.timestamp);
+          if (gpsArr.length) lastSentRef.current.gps = Math.max(lastSentRef.current.gps || 0, gpsArr.at(-1)!.timestamp);
+        } catch {}
+      }
+    };
+
+    const id = setInterval(feed, FEED_MS);
+    return () => clearInterval(id);
+  }, [processSensorData]);
+
+  // ---- Debug system status (giữ nguyên) ----
+  useEffect(() => {
+    if (systemStatus) {
+      // console.log('🤖 AI System Status:', systemStatus);
+    }
+  }, [systemStatus]);
+
+  // ---- UI helpers ----
+  const unitLabel: Record<Sensor, string> = {
+    temperature: "°C",
+    light: "lx",
+    distance: "cm",
+    gps: "m/s", // đổi về numeric để Stats dùng được
+    gas: "ppm"
+  };
+  const isLoading = loading || loadingLight || loadingDistance || loadingGps || loadingGas;
+
+  const latestAlert = alerts?.length ? alerts[alerts.length - 1] : null;
+
+  const reversedTemp = useMemo(() => [...filteredTemp].reverse(), [filteredTemp]);
+  const reversedLight = useMemo(() => [...filteredLight].reverse(), [filteredLight]);
+  const reversedDistance = useMemo(() => [...filteredDistance].reverse(), [filteredDistance]);
+  const reversedGps = useMemo(() => [...filteredGps].reverse(), [filteredGps]);
+  const reversedGas = useMemo(() => [...filteredGas].reverse(), [filteredGas]);
+
+  // ---- Page switch early return (sau hooks) ----
+  if (currentPage === "ai") {
     return (
       <div className="min-h-screen bg-white">
-        <div className="w-full max-w-none lg:max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 xl:px-12">
-          <h1 className="text-xl font-bold text-gray-800 mb-3">📊 Thống kê cảm biến</h1>
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-600 text-sm">
-              ⚠️ Chưa cấu hình Firebase (.env). Vui lòng thêm các biến VITE_FIREBASE_* rồi chạy lại dev server.
-            </p>
+        <div className="w-full lg:max-w-7xl mx-auto px-3 py-3 sm:px-4 sm:py-4 md:px-6 md:py-4 lg:px-8 lg:py-4 xl:px-12">
+          <Header currentPage={currentPage} onPageChange={(page) => setCurrentPage(page as Page)} />
+          {FirebaseBanner}
+          <div className="space-y-3 sm:space-y-4">
+            <BaselineDataCollector />
+            <EdgeAIDashboard />
           </div>
         </div>
       </div>
     );
   }
 
-  // data hooks
-  const { data: tempData = [], loading, error } = useTemperature(200);
-  const { data: lightData = [], loading: loadingLight } = useLight(200);
-  const { data: distanceData = [], loading: loadingDistance } = useDistance(200);
-
-  const cutoff = useMemo(
-    () => Date.now() - selectedTimeRange * 60 * 1000,
-    [selectedTimeRange]
-  );
-
-  const filteredTemp = useMemo(() => tempData.filter(d => d.timestamp >= cutoff), [tempData, cutoff]);
-  const filteredLight = useMemo(() => lightData.filter(d => d.timestamp >= cutoff), [lightData, cutoff]);
-  const filteredDistance = useMemo(() => distanceData.filter(d => d.timestamp >= cutoff), [distanceData, cutoff]);
-
-  const unitLabel: Record<Sensor, string> = { temperature: "°C", light: "lx", distance: "cm" };
-  const isLoading = loading || loadingLight || loadingDistance;
-
   return (
-    <div className="min-h-screen bg-white">
-      {/* Responsive container: mobile full width, desktop max width with center */}
-      <div className="w-full max-w-none lg:max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 xl:px-12">
-        {/* Header - responsive text sizes */}
-        <div className="mb-6 lg:mb-8">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-800 mb-2">
-            📊 Thống kê cảm biến
-          </h1>
-          <p className="text-sm sm:text-base text-gray-600">
-            Theo dõi dữ liệu cảm biến real-time
-          </p>
-        </div>
+    <motion.div className="min-h-screen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+      <div className="w-full lg:max-w-7xl mx-auto px-3 py-3 sm:px-4 sm:py-4 md:px-6 md:py-4 lg:px-8 lg:py-4 xl:px-12">
+        {/* Header */}
+        <Header currentPage={currentPage} onPageChange={(page) => setCurrentPage(page as Page)} />
+        {FirebaseBanner}
 
-        {/* Error message */}
+        {/* Error */}
         {error && (
-          <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
-            <p className="text-red-600 text-sm">❌ Lỗi: {String(error)}</p>
+          <div className="mb-3 sm:mb-4 bg-red-50 border border-red-200 rounded-lg p-2 sm:p-3">
+            <p className="text-red-600 text-xs sm:text-sm">❌ Lỗi: {String(error)}</p>
           </div>
         )}
 
-        {/* Loading state */}
+        {/* Loading */}
         {isLoading ? (
           <div className="text-center py-8">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -83,152 +302,245 @@ export default function App() {
           </div>
         ) : (
           <>
-            {/* Sensor Tabs - Mobile scroll, Desktop centered */}
-            <div className="mb-6 lg:mb-8">
-              <div className="flex justify-center sm:justify-start space-x-2 overflow-x-auto pb-2">
-                <button
-                  onClick={() => setSensor("temperature")}
-                  className={`flex-shrink-0 px-4 py-2 sm:px-6 sm:py-3 rounded-lg text-sm sm:text-base font-medium transition-all duration-200 ${
-                    sensor === "temperature"
-                      ? "bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-lg transform scale-105"
-                      : "bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100 hover:shadow-md"
-                  }`}
-                >
-                  🌡️ Nhiệt độ
-                </button>
-                <button
-                  onClick={() => setSensor("light")}
-                  className={`flex-shrink-0 px-4 py-2 sm:px-6 sm:py-3 rounded-lg text-sm sm:text-base font-medium transition-all duration-200 ${
-                    sensor === "light"
-                      ? "bg-gradient-to-r from-yellow-400 to-yellow-600 text-white shadow-lg transform scale-105"
-                      : "bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100 hover:shadow-md"
-                  }`}
-                >
-                  💡 Ánh sáng
-                </button>
-                <button
-                  onClick={() => setSensor("distance")}
-                  className={`flex-shrink-0 px-4 py-2 sm:px-6 sm:py-3 rounded-lg text-sm sm:text-base font-medium transition-all duration-200 ${
-                    sensor === "distance"
-                      ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg transform scale-105"
-                      : "bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100 hover:shadow-md"
-                  }`}
-                >
-                  📏 Khoảng cách
-                </button>
+            {/* Sensor Tabs */}
+            <motion.div
+              className="mb-4 sm:mb-6 lg:mb-8 -mx-3 sm:mx-0"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+            >
+              <div className="flex justify-start gap-2 overflow-x-auto pb-2 scrollbar-hide px-3 sm:px-0">
+                {([
+                  { k: "temperature", label: "🌡️ Nhiệt độ", activeClass: "from-red-500 to-orange-500" },
+                  { k: "light", label: "💡 Ánh sáng", activeClass: "from-yellow-400 to-yellow-600" },
+                  { k: "distance", label: "📏 Khoảng cách", activeClass: "from-blue-500 to-purple-600" },
+                  { k: "gps", label: "🗺️ GPS", activeClass: "from-green-500 to-emerald-600" },
+                  { k: "gas", label: "🌬️ Khí gas", activeClass: "from-red-500 to-pink-600" }
+                ] as Array<{k: Sensor; label: string; activeClass: string}>).map((b) => (
+                  <motion.button
+                    key={b.k}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setSensor(b.k)}
+                    className={`flex-shrink-0 px-3 py-2.5 sm:px-4 sm:py-2 md:px-6 md:py-3 rounded-lg text-xs sm:text-sm md:text-base font-medium transition-all duration-200 min-h-[44px] whitespace-nowrap ${
+                      sensor === b.k
+                        ? `bg-gradient-to-r ${b.activeClass} text-white shadow-lg`
+                        : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:shadow-md"
+                    }`}
+                  >
+                    {b.label}
+                  </motion.button>
+                ))}
               </div>
-            </div>
+            </motion.div>
 
             {/* Time Range Stats */}
-            <div className="mb-6">
+            <div className="mb-4 sm:mb-6">
               <TimeRangeStats
                 data={
                   sensor === "temperature" ? tempData :
-                  sensor === "light" ? (lightData as any) : (distanceData as any)
+                  sensor === "light" ? (lightData as any) :
+                  sensor === "distance" ? (distanceData as any) :
+                  sensor === "gps" ? (gpsData as any) :
+                  (gasData as any)
                 }
                 selectedTimeRange={selectedTimeRange}
-                onTimeRangeChange={setSelectedTimeRange}
+                onTimeRangeChange={(m) => {
+                  setSelectedTimeRange(m);
+                  setCustomStartDate(null);
+                  setCustomEndDate(null);
+                }}
                 unitLabel={unitLabel[sensor]}
+                sensorType={sensor}
+                onDateRangeChange={(s, e) => {
+                  setCustomStartDate(s);
+                  setCustomEndDate(e);
+                }}
+                onClearDateRange={() => {
+                  setCustomStartDate(null);
+                  setCustomEndDate(null);
+                }}
               />
             </div>
 
-            {/* Chart & Table - Desktop side by side */}
-            <div className="mb-6 lg:mb-8">
-              {/* Mobile: Stacked, Desktop: Side by side */}
-              <div className="lg:grid lg:grid-cols-2 lg:gap-8">
-                {/* Chart Section */}
-                <div className="mb-6 lg:mb-0">
-                  <div className="bg-gray-50 rounded-lg shadow-sm border border-gray-200 p-4 lg:p-6">
-                    <h3 className="text-lg lg:text-xl font-semibold text-gray-800 mb-4">
-                      📈 Biểu đồ {sensor === "temperature" ? "nhiệt độ" : sensor === "light" ? "ánh sáng" : "khoảng cách"}
-                    </h3>
-                    <div className="h-64 lg:h-80">
-                      {sensor === "temperature" && <TemperatureChart data={filteredTemp} />}
-                      {sensor === "light" && <LightChart data={filteredLight} />}
-                      {sensor === "distance" && <DistanceChart data={filteredDistance} />}
+            {/* AI Activity Monitor */}
+            {systemStatus && (
+              <motion.div
+                className="mb-4 sm:mb-6 bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-3 sm:p-4 lg:p-6 border border-purple-200 shadow-lg"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+              >
+                <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2 sm:mb-3 flex items-center gap-2 flex-wrap">
+                  🤖 AI Activity Monitor
+                  <motion.span
+                    className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      systemStatus.isRunning
+                        ? systemStatus.systemHealth === 'healthy' ? 'bg-green-100 text-green-800'
+                        : systemStatus.systemHealth === 'warning' ? 'bg-yellow-100 text-yellow-800'
+                        : 'bg-red-100 text-red-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}
+                    animate={{ scale: [1, 1.1, 1] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  >
+                    {systemStatus.isRunning ? '🟢 Active' : '🔴 Inactive'}
+                  </motion.span>
+                </h3>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-4 text-xs sm:text-sm">
+                  <motion.div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow" whileHover={{ scale: 1.05 }}>
+                    <div className="text-gray-600 text-xs">Sensors</div>
+                    <div className="text-lg font-semibold text-blue-600">{systemStatus.sensorsConnected}</div>
+                  </motion.div>
+                  <motion.div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow" whileHover={{ scale: 1.05 }}>
+                    <div className="text-gray-600 text-xs">Active Alerts</div>
+                    <div className={`text-lg font-semibold ${systemStatus.activeAlerts > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      {systemStatus.activeAlerts}
                     </div>
-                  </div>
+                  </motion.div>
+                  <motion.div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow" whileHover={{ scale: 1.05 }}>
+                    <div className="text-gray-600 text-xs">Uptime</div>
+                    <div className="text-lg font-semibold text-purple-600">
+                      {Math.floor(systemStatus.uptime / 1000)}s
+                    </div>
+                  </motion.div>
+                  <motion.div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow" whileHover={{ scale: 1.05 }}>
+                    <div className="text-gray-600 text-xs">Health</div>
+                    <div className={`text-lg font-semibold ${
+                      systemStatus.systemHealth === 'healthy' ? 'text-green-600' :
+                      systemStatus.systemHealth === 'warning' ? 'text-yellow-600' :
+                      'text-red-600'
+                    }`}>
+                      {systemStatus.systemHealth}
+                    </div>
+                  </motion.div>
+                  {systemStatus.detectorMetrics && (
+                    <>
+                      <motion.div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow" whileHover={{ scale: 1.05 }}>
+                        <div className="text-gray-600 text-xs">Latest Error</div>
+                        <div className="text-lg font-semibold text-amber-600">
+                          {systemStatus.detectorMetrics.latestError === null ? '—' : systemStatus.detectorMetrics.latestError.toFixed(4)}
+                        </div>
+                      </motion.div>
+                      <motion.div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow" whileHover={{ scale: 1.05 }}>
+                        <div className="text-gray-600 text-xs">Threshold</div>
+                        <div className="text-lg font-semibold text-amber-700">
+                          {systemStatus.detectorMetrics.threshold.toFixed(4)}
+                        </div>
+                      </motion.div>
+                    </>
+                  )}
                 </div>
 
-                {/* Data Table */}
-                <div>
-                  <div className="bg-gray-50 rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                    <div className="px-4 py-3 lg:px-6 lg:py-4 border-b border-gray-200">
-                      <h3 className="text-lg lg:text-xl font-semibold text-gray-800">
-                        📋 Bảng dữ liệu
-                      </h3>
+                {alerts.length > 0 && (
+                  <motion.div className="mt-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Recent Alerts (AI Only):</h4>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {alerts
+                        .filter(alert => {
+                          if (alert.source === 'point_detection') return false;
+                          if (alert.source === 'ai_model') return true;
+                          return !alert.message.includes('Spike tại');
+                        })
+                        .slice(-3)
+                        .map((alert) => (
+                          <motion.div
+                            key={alert.id ?? `${alert.sensorType}-${alert.timestamp}`}
+                            className={`text-xs p-2 rounded ${
+                              alert.severity === 'critical' ? 'bg-red-100 text-red-800' :
+                              alert.severity === 'high' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-blue-100 text-blue-800'
+                            }`}
+                            initial={{ x: -20, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                          >
+                            <span className="font-medium">{alert.sensorType}:</span> {alert.message}
+                          </motion.div>
+                        ))}
+                      {alerts.filter(alert => {
+                        if (alert.source === 'point_detection') return false;
+                        if (alert.source === 'ai_model') return true;
+                        return !alert.message.includes('Spike tại');
+                      }).length === 0 && (
+                        <div className="text-xs text-gray-500 text-center py-2">No AI alerts</div>
+                      )}
                     </div>
-                    <div className="overflow-x-auto max-h-80 lg:max-h-96 overflow-y-auto">
-                      {sensor === "temperature" && <TemperatureTable rows={[...filteredTemp].reverse()} />}
-                      {sensor === "light" && <LightTable rows={[...filteredLight].reverse()} />}
-                      {sensor === "distance" && <DistanceTable rows={[...filteredDistance].reverse()} />}
-                    </div>
-                  </div>
+                  </motion.div>
+                )}
+              </motion.div>
+            )}
+
+            {/* Charts */}
+            <motion.div
+              className="mb-4 sm:mb-6 lg:mb-8"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+            >
+              <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-3 sm:p-4 lg:p-6 hover:shadow-xl transition-shadow">
+                <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-800 mb-1">📈 Biểu đồ dữ liệu</h3>
+                <p className="text-xs text-gray-500 mb-2 sm:mb-3">Dữ liệu real-time từ cảm biến</p>
+                <div className="h-48 sm:h-64 md:h-80 lg:h-96 w-full overflow-x-auto">
+                  {sensor === "temperature" && (
+                    <TemperatureChart
+                      data={filteredTemp}
+                      highlightTimestamp={latestAlert?.sensorType === 'temperature' ? latestAlert.timestamp : undefined}
+                    />
+                  )}
+                  {sensor === "light" && (
+                    <LightChart
+                      data={filteredLight}
+                      highlightTimestamp={latestAlert?.sensorType === 'light' ? latestAlert.timestamp : undefined}
+                    />
+                  )}
+                  {sensor === "distance" && (
+                    <DistanceChart
+                      data={filteredDistance}
+                      highlightTimestamp={latestAlert?.sensorType === 'distance' ? latestAlert.timestamp : undefined}
+                    />
+                  )}
+                  {sensor === "gps" && <GpsChart data={filteredGps} />}
+                  {sensor === "gas" && <GasChart data={filteredGas} />}
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Special sections */}
+            {sensor === "gps" && (
+              <div className="mb-4 sm:mb-6 lg:mb-8">
+                <FreeGpsMap data={filteredGps} />
+              </div>
+            )}
+            {sensor === "gas" && (
+              <div className="mb-4 sm:mb-6 lg:mb-8">
+                <GasDashboard data={filteredGas} />
+              </div>
+            )}
+
+            {/* Tables */}
+            <div className="mb-4 sm:mb-6 lg:mb-8">
+              <div className="bg-gray-50 rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-3 py-2 sm:px-4 sm:py-3 lg:px-6 lg:py-4 border-b border-gray-200">
+                  <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-800">📋 Bảng dữ liệu</h3>
+                </div>
+                <div className="overflow-x-auto max-h-64 sm:max-h-80 lg:max-h-96 overflow-y-auto -mx-3 sm:mx-0">
+                  {sensor === "temperature" && <TemperatureTable rows={reversedTemp} />}
+                  {sensor === "light" && <LightTable rows={reversedLight} />}
+                  {sensor === "distance" && <DistanceTable rows={reversedDistance} />}
+                  {sensor === "gps" && <GpsTable rows={reversedGps} />}
+                  {sensor === "gas" && <GasTable rows={reversedGas} />}
                 </div>
               </div>
             </div>
 
-            {/* DEV Buttons - Mobile stacked, Desktop horizontal */}
-            {import.meta.env.DEV && (
-              <div className="space-y-3 lg:space-y-4">
-                <h3 className="text-lg lg:text-xl font-semibold text-gray-800 mb-3 lg:mb-4">
-                  🛠️ Dev Tools
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4">
-                  {sensor === "temperature" && (
-                    <>
-                      <button
-                        className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
-                        onClick={() => seedTemperatureLastMinutes(30)}
-                      >
-                        🌡️ Fake nhiệt độ 30 phút
-                      </button>
-                      <button
-                        className="w-full bg-orange-600 hover:bg-orange-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
-                        onClick={() => seedTemperatureLastMinutesWithAnomalies(30)}
-                      >
-                        ⚠️ Fake nhiệt độ (có bất thường)
-                      </button>
-                    </>
-                  )}
-                  {sensor === "light" && (
-                    <>
-                      <button
-                        className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
-                        onClick={() => seedLightLastMinutes(30)}
-                      >
-                        💡 Fake ánh sáng 30 phút
-                      </button>
-                      <button
-                        className="w-full bg-orange-600 hover:bg-orange-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
-                        onClick={() => seedLightLastMinutesWithAnomalies(30)}
-                      >
-                        ⚠️ Fake ánh sáng (có bất thường)
-                      </button>
-                    </>
-                  )}
-                  {sensor === "distance" && (
-                    <>
-                      <button
-                        className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
-                        onClick={() => seedDistanceLastMinutes(30)}
-                      >
-                        📏 Fake khoảng cách 30 phút
-                      </button>
-                      <button
-                        className="w-full bg-orange-600 hover:bg-orange-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
-                        onClick={() => seedDistanceLastMinutesWithAnomalies(30)}
-                      >
-                        ⚠️ Fake khoảng cách (có bất thường)
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* Fake ESP Simulator for Testing Anomalies */}
+            <div className="mb-4 sm:mb-6 lg:mb-8">
+              <FakeESPSimulator />
+            </div>
           </>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }

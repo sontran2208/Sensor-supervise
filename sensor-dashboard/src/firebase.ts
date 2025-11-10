@@ -1,6 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app';
 import type { FirebaseApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -38,6 +39,19 @@ if (firebaseConfigured) {
   }
   appInstance = initializeFirebaseApp();
   dbInstance = getFirestore(appInstance);
+
+  // Ensure the web app has an authenticated user (anonymous) so Firestore rules with request.auth pass
+  const auth = getAuth(appInstance);
+  onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      signInAnonymously(auth).catch((err) => {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.warn('[Firebase] Anonymous sign-in failed:', err?.message || err);
+        }
+      });
+    }
+  });
 } else {
   if (import.meta.env.DEV) {
     // eslint-disable-next-line no-console

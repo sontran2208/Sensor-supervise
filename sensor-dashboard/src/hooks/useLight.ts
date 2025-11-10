@@ -1,11 +1,13 @@
 import { useLightFeed } from './useLightFeed';
-import { useMockLightFeed } from './useMockLightFeed';
-import { firebaseConfigured } from '../firebase';
 
-export function useLight(maxItems: number = 200) {
-  const live = useLightFeed(maxItems);
-  const mock = useMockLightFeed(30, 60_000);
-  return firebaseConfigured ? live : mock;
+export function useLight(
+  maxItems: number = 200,
+  timeRangeMinutes?: number,
+  startDate?: Date,
+  endDate?: Date
+) {
+  // Force live data - không dùng mock nữa
+  return useLightFeed(maxItems, timeRangeMinutes, startDate, endDate);
 }
 
 export type { LightDoc } from './useLightFeed';

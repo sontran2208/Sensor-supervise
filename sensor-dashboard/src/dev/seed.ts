@@ -203,3 +203,60 @@ export async function seedDistanceLastMinutesWithAnomalies(minutes: number = 30,
 }
 
 
+// ---- Advanced scenario seeds ----
+export async function seedTemperatureDrift(minutes: number = 60, intervalMs: number = 60_000) {
+  if (!import.meta.env.DEV) throw new Error('Seeding is only allowed in development');
+  const now = Date.now();
+  const start = now - minutes * intervalMs;
+  if (!db) throw new Error('Firestore is not initialized. Ensure Firebase env vars are set.');
+  const ref = collection(db, 'temperature');
+  const tasks: Promise<unknown>[] = [];
+  let base = 27.0;
+  let drift = 0;
+  for (let i = 0; i < minutes; i += 1) {
+    const ts = start + i * intervalMs;
+    // slow positive drift
+    drift += 0.02 + (Math.random() - 0.5) * 0.005;
+    const value = generateRoomTemperatureC(base + drift, i);
+    tasks.push(addDoc(ref, { timestamp: ts, value: Number(value.toFixed(2)) }));
+  }
+  await Promise.all(tasks);
+}
+
+export async function seedLightSpikeBurst(minutes: number = 30, intervalMs: number = 60_000) {
+  if (!import.meta.env.DEV) throw new Error('Seeding is only allowed in development');
+  const now = Date.now();
+  const start = now - minutes * intervalMs;
+  if (!db) throw new Error('Firestore is not initialized. Ensure Firebase env vars are set.');
+  const ref = collection(db, 'light');
+  const tasks: Promise<unknown>[] = [];
+  for (let i = 0; i < minutes; i += 1) {
+    const ts = start + i * intervalMs;
+    let value = generateLux(600, i);
+    if (i % 5 === 0) {
+      // periodic spike bursts
+      value += 600 + Math.round(Math.random() * 600);
+    }
+    tasks.push(addDoc(ref, { timestamp: ts, value: Math.max(0, value) }));
+  }
+  await Promise.all(tasks);
+}
+
+export async function seedDistancePatternBreak(minutes: number = 45, intervalMs: number = 60_000) {
+  if (!import.meta.env.DEV) throw new Error('Seeding is only allowed in development');
+  const now = Date.now();
+  const start = now - minutes * intervalMs;
+  if (!db) throw new Error('Firestore is not initialized. Ensure Firebase env vars are set.');
+  const ref = collection(db, 'distance');
+  const tasks: Promise<unknown>[] = [];
+  for (let i = 0; i < minutes; i += 1) {
+    const ts = start + i * intervalMs;
+    let value = generateDistance(120, i);
+    if (i > Math.floor(minutes / 2)) {
+      // break pattern: new baseline and lower variance
+      value = generateDistance(80, i) + (Math.random() - 0.5) * 1.0;
+    }
+    tasks.push(addDoc(ref, { timestamp: ts, value: Number(value.toFixed(1)) }));
+  }
+  await Promise.all(tasks);
+}

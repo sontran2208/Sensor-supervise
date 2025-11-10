@@ -4,7 +4,12 @@ import { db, firebaseConfigured, type TemperatureRecord } from '../firebase';
 
 export type TemperatureDoc = TemperatureRecord & { id: string };
 
-export function useTemperatureFeed(maxItems: number = 200) {
+export function useTemperatureFeed(
+  maxItems: number = 200,
+  timeRangeMinutes?: number,
+  startDate?: Date,
+  endDate?: Date
+) {
   const [data, setData] = useState<TemperatureDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -15,8 +20,11 @@ export function useTemperatureFeed(maxItems: number = 200) {
       setError('Firebase chưa được cấu hình. Vui lòng thêm .env.');
       return;
     }
+    
     const ref = collection(db, 'temperature');
-    const q = query(ref, orderBy('timestamp', 'desc'), limit(maxItems));
+    const needsFiltering = Boolean(timeRangeMinutes || (startDate && endDate));
+    const fetchLimit = needsFiltering ? Math.max(maxItems * 4, 400) : maxItems;
+    const q = query(ref, orderBy('timestamp', 'desc'), limit(fetchLimit));
     const unsub = onSnapshot(
       q,
       (snap) => {
@@ -37,9 +45,24 @@ export function useTemperatureFeed(maxItems: number = 200) {
             return { id: d.id, timestamp: ts, value } as TemperatureDoc;
           })
           .filter(Boolean) as TemperatureDoc[];
+        let filtered = items;
+        if (timeRangeMinutes) {
+          const now = Date.now();
+          const startTime = now - (timeRangeMinutes * 60 * 1000);
+          filtered = filtered.filter(item => item.timestamp >= startTime);
+        } else if (startDate && endDate) {
+          const startTime = startDate.getTime();
+          const endTime = endDate.getTime();
+          filtered = filtered.filter(item => item.timestamp >= startTime && item.timestamp <= endTime);
+        }
+
         // sort ascending by time for charting
-        items.sort((a, b) => a.timestamp - b.timestamp);
-        setData(items);
+        filtered.sort((a, b) => a.timestamp - b.timestamp);
+        if (filtered.length > maxItems) {
+          filtered = filtered.slice(-maxItems);
+        }
+
+        setData(filtered);
         setLoading(false);
       },
       (err) => {
@@ -48,7 +71,7 @@ export function useTemperatureFeed(maxItems: number = 200) {
       }
     );
     return () => unsub();
-  }, [maxItems]);
+  }, [maxItems, timeRangeMinutes, startDate, endDate]);
 
   const latest = useMemo(() => (data.length ? data[data.length - 1] : null), [data]);
 

@@ -1,11 +1,13 @@
 import { useDistanceFeed } from './useDistanceFeed';
-import { useMockDistanceFeed } from './useMockDistanceFeed';
-import { firebaseConfigured } from '../firebase';
 
-export function useDistance(maxItems: number = 200) {
-  const live = useDistanceFeed(maxItems);
-  const mock = useMockDistanceFeed(30, 60_000);
-  return firebaseConfigured ? live : mock;
+export function useDistance(
+  maxItems: number = 200,
+  timeRangeMinutes?: number,
+  startDate?: Date,
+  endDate?: Date
+) {
+  // Force live data - không dùng mock nữa
+  return useDistanceFeed(maxItems, timeRangeMinutes, startDate, endDate);
 }
 
 export type { DistanceDoc } from './useDistanceFeed';

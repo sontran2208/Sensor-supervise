@@ -1,18 +1,21 @@
-import React from 'react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
 import dayjs from 'dayjs';
 
 export type LightDoc = { id: string; timestamp: number; value: number };
 
 type Props = {
   data: LightDoc[];
+  highlightTimestamp?: number;
 };
 
-export function LightChart({ data }: Props) {
+export function LightChart({ data, highlightTimestamp }: Props) {
   const chartData = data.map((d) => ({
     t: dayjs(d.timestamp).format('HH:mm:ss'),
     value: d.value,
+    ts: d.timestamp,
   }));
+
+  const hl = highlightTimestamp ? dayjs(highlightTimestamp).format('HH:mm:ss') : undefined;
 
   return (
     <div className="w-full h-full">
@@ -23,6 +26,7 @@ export function LightChart({ data }: Props) {
           <YAxis tick={{ fontSize: 12 }} domain={['auto', 'auto']} unit=" lx" />
           <Tooltip formatter={(value: number) => `${value.toFixed(0)} lx`} labelFormatter={(l) => `Thời gian ${l}`} />
           <Line type="monotone" dataKey="value" stroke="#f59e0b" strokeWidth={2} dot={false} isAnimationActive={false} />
+          {hl && <ReferenceLine x={hl} stroke="#ef4444" strokeDasharray="4 2" />}
         </LineChart>
       </ResponsiveContainer>
     </div>

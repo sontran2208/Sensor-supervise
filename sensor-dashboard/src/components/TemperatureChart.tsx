@@ -1,17 +1,20 @@
-import React from 'react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
 import dayjs from 'dayjs';
 import type { TemperatureDoc } from '../hooks/useTemperatureFeed';
 
 type Props = {
   data: TemperatureDoc[];
+  highlightTimestamp?: number;
 };
 
-export function TemperatureChart({ data }: Props) {
+export function TemperatureChart({ data, highlightTimestamp }: Props) {
   const chartData = data.map((d) => ({
     t: dayjs(d.timestamp).format('HH:mm:ss'),
     value: d.value,
+    ts: d.timestamp,
   }));
+
+  const hl = highlightTimestamp ? dayjs(highlightTimestamp).format('HH:mm:ss') : undefined;
 
   return (
     <div className="w-full h-full">
@@ -22,6 +25,7 @@ export function TemperatureChart({ data }: Props) {
           <YAxis tick={{ fontSize: 12 }} domain={['auto', 'auto']} unit="°C" />
           <Tooltip formatter={(value: number) => `${value.toFixed(2)} °C`} labelFormatter={(l) => `Thời gian ${l}`} />
           <Line type="monotone" dataKey="value" stroke="#82ca9d" strokeWidth={2} dot={false} isAnimationActive={false} />
+          {hl && <ReferenceLine x={hl} stroke="#ef4444" strokeDasharray="4 2" />}
         </LineChart>
       </ResponsiveContainer>
     </div>
