@@ -33,6 +33,9 @@ export default function GpsTable({ rows }: Props) {
               Satellites
             </th>
             <th className="px-2 sm:px-4 md:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Mode
+            </th>
+            <th className="px-2 sm:px-4 md:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
               Accuracy
             </th>
           </tr>
@@ -50,16 +53,27 @@ export default function GpsTable({ rows }: Props) {
                 {formatCoordinate(row.longitude)}
               </td>
               <td className="px-2 sm:px-4 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">
-                {formatAltitude(row.altitude)}
+                {row.altitude !== undefined ? formatAltitude(row.altitude) : 'N/A'}
               </td>
               <td className="px-2 sm:px-4 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">
-                {formatSpeed(row.speed)}
+                {row.speed !== undefined ? formatSpeed(row.speed) : 'N/A'}
               </td>
               <td className="px-2 sm:px-4 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">
-                {row.satellites}
+                {row.satellites ?? 'N/A'}
+              </td>
+              <td className="px-2 sm:px-4 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm">
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  row.mode === 'REAL' 
+                    ? 'bg-green-100 text-green-800' 
+                    : row.mode === 'SIMULATED'
+                    ? 'bg-yellow-100 text-yellow-800'
+                    : 'bg-gray-100 text-gray-800'
+                }`}>
+                  {row.mode ?? 'UNKNOWN'}
+                </span>
               </td>
               <td className="px-2 sm:px-4 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">
-                {row.accuracy.toFixed(2)}m
+                {row.accuracy !== undefined ? `${row.accuracy.toFixed(2)}m` : 'N/A'}
               </td>
             </tr>
           ))}

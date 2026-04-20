@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useTemperature } from "./hooks/useTemperature";
+import { useHumidity } from "./hooks/useHumidity";
 import TemperatureTable from "./components/TemperatureTable";
 import TemperatureChart from "./components/TemperatureChart";
 import LightChart from "./components/LightChart";
@@ -16,15 +17,22 @@ import TimeRangeStats from "./components/TimeRangeStats";
 import Header from "./components/Header";
 import EdgeAIDashboard from "./components/EdgeAIDashboard";
 import BaselineDataCollector from "./components/BaselineDataCollector";
-import FakeESPSimulator from "./components/FakeESPSimulator";
 import toast from "react-hot-toast";
 import { motion } from "framer-motion";
 import { firebaseConfigured } from "./firebase";
+import { HiExclamationCircle, HiChartBar, HiInformationCircle, HiClipboard } from "react-icons/hi";
+import { FaThermometerHalf, FaLightbulb, FaRuler, FaMapMarkerAlt, FaWind, FaRobot } from "react-icons/fa";
+import { MdShowChart } from "react-icons/md";
 import { useLight } from "./hooks/useLight";
 import { useDistance } from "./hooks/useDistance";
 import { useGps } from "./hooks/useGps";
 import { useGas } from "./hooks/useGas";
 import { useEdgeAI } from "./hooks/useEdgeAI";
+import { publishServoCommandToRTDB } from "./utils/servoCommands";
+import { publishRelayStateToRTDB } from "./utils/relayCommands";
+import type { ActuatorCommand } from "./ai/ActuatorController";
+import type { RelayAutomationDecision } from "./ai/RelayAutomationController";
+import RelayController from "./components/RelayController";
 
 type Sensor = "temperature" | "light" | "distance" | "gps" | "gas";
 type Page = "dashboard" | "ai" | "camera";
@@ -34,6 +42,9 @@ const FEED_MS = 5000;
 const RECENT_WINDOW_MS = 60_000;
 const MAX_SAMPLES_PER_FEED = 50; // Tăng số mẫu để phát hiện drift tốt hơn
 const GPS_MAX_MPS = 100; // clamp vật lý ~360 km/h
+const SERVO_DEVICE_ID = import.meta.env.VITE_SERVO_DEVICE_ID || "default-servo";
+/** Bật ghi RTDB `/relayControl` theo nhiệt độ + AI. Tắt: `VITE_RELAY_AUTOMATION=false` */
+const RELAY_AUTOMATION_ENABLED = import.meta.env.VITE_RELAY_AUTOMATION !== "false";
 
 export default function App() {
   // ---- State/UI ----
@@ -62,6 +73,7 @@ export default function App() {
   // ---- Data hooks (luôn gọi trước mọi early return) ----
   // Pass timeRangeMinutes to query only recent data from Firestore (server-side filter)
   const { data: tempData = [], loading, error } = useTemperature(200, useCustom ? undefined : selectedTimeRange, customStartDate || undefined, customEndDate || undefined);
+  const { data: humidityData = [], loading: loadingHumidity } = useHumidity(200, useCustom ? undefined : selectedTimeRange, customStartDate || undefined, customEndDate || undefined);
   const { data: lightData = [], loading: loadingLight } = useLight(200, useCustom ? undefined : selectedTimeRange, customStartDate || undefined, customEndDate || undefined);
   const { data: distanceData = [], loading: loadingDistance } = useDistance(200, useCustom ? undefined : selectedTimeRange, customStartDate || undefined, customEndDate || undefined);
   const { data: gpsData = [], loading: loadingGps } = useGps(200);
@@ -75,6 +87,42 @@ export default function App() {
     return tempData.filter(d => d.timestamp >= cutoff);
   }, [tempData, cutoff, useCustom, customStartDate, customEndDate]);
 
+  const filteredHumidity = useMemo(() => {
+    if (useCustom && customStartDate && customEndDate) {
+      const s = customStartDate.getTime(); const e = customEndDate.getTime();
+      return humidityData.filter(d => d.timestamp >= s && d.timestamp <= e);
+    }
+    return humidityData.filter(d => d.timestamp >= cutoff);
+  }, [humidityData, cutoff, useCustom, customStartDate, customEndDate]);
+
+  const mergedTempData = useMemo(() => {
+    if (!filteredTemp.length) return filteredTemp;
+    if (!filteredHumidity.length) return filteredTemp.map((t) => ({ ...t, humidity: undefined }));
+
+    let j = 0;
+    const MAX_PAIR_DIFF_MS = 30_000;
+    return filteredTemp.map((t) => {
+      while (j + 1 < filteredHumidity.length && filteredHumidity[j + 1].timestamp <= t.timestamp) {
+        j += 1;
+      }
+
+      const candidates = [filteredHumidity[j], filteredHumidity[j + 1]].filter(Boolean);
+      let best: { timestamp: number; value: number } | undefined;
+      let bestDiff = Number.POSITIVE_INFINITY;
+      for (const c of candidates) {
+        const diff = Math.abs(c.timestamp - t.timestamp);
+        if (diff < bestDiff) {
+          best = c;
+          bestDiff = diff;
+        }
+      }
+
+      return {
+        ...t,
+        humidity: best && bestDiff <= MAX_PAIR_DIFF_MS ? best.value : undefined
+      };
+    });
+  }, [filteredTemp, filteredHumidity]);
   const filteredLight = useMemo(() => {
     if (useCustom && customStartDate && customEndDate) {
       const s = customStartDate.getTime(); const e = customEndDate.getTime();
@@ -129,9 +177,9 @@ export default function App() {
 
       const msg = `[Alert] ${a.message}`;
       if (a.severity === "critical") toast.error(msg);
-      else if (a.severity === "high") toast(msg, { icon: "⚠️" });
-      else if (a.severity === "medium") toast(msg, { icon: "📊" });
-      else toast(msg, { icon: "ℹ️" });
+      else if (a.severity === "high") toast(msg, { icon: <HiExclamationCircle className="w-5 h-5" /> });
+      else if (a.severity === "medium") toast(msg, { icon: <HiChartBar className="w-5 h-5" /> });
+      else toast(msg, { icon: <HiInformationCircle className="w-5 h-5" /> });
     });
   }, [alerts]);
 
@@ -181,51 +229,115 @@ export default function App() {
       const distNew = takeNew(distRef.current, lastSentRef.current.distance);
       distNew.forEach(item => readings.push({ timestamp: item.timestamp, value: item.value, sensorType: "distance" }));
 
-      // Gas → composite (giữ nguyên logic)
+      // Gas → sử dụng mq2_raw (format mới từ Arduino code)
       const gasNew = takeNew(gasRef.current, lastSentRef.current.gas);
       gasNew.forEach((item: any) => {
-        const co = Math.max(0, Number(item.co ?? 0));
-        const co2 = Math.max(0, Number(item.co2 ?? 0));
-        const smoke = Math.max(0, Number(item.smoke ?? 0));
-        const lpg = Math.max(0, Number(item.lpg ?? 0));
-        const methane = Math.max(0, Number(item.methane ?? 0));
-        const hydrogen = Math.max(0, Number(item.hydrogen ?? 0));
-        const aqi = Math.max(0, Number(item.airQuality ?? 0));
-        const ratios = [co / 20, co2 / 2400, smoke / 500, lpg / 300, methane / 2000, hydrogen / 200, aqi / 500];
-        const composite = Math.max(...ratios) * 100;
+        // Lấy mq2_raw từ dữ liệu (0-4095 cho ESP32 ADC)
+        const mq2_raw = Math.max(0, Number(item.mq2_raw ?? 0));
+        // Chuyển đổi mq2_raw thành giá trị composite (0-100) cho AI system
+        // Ngưỡng: < 500 = Low (0-25), 500-1500 = Medium (25-50), 1500-3000 = High (50-75), > 3000 = Very High (75-100)
+        let composite = 0;
+        if (mq2_raw < 500) {
+          composite = (mq2_raw / 500) * 25; // 0-25
+        } else if (mq2_raw < 1500) {
+          composite = 25 + ((mq2_raw - 500) / 1000) * 25; // 25-50
+        } else if (mq2_raw < 3000) {
+          composite = 50 + ((mq2_raw - 1500) / 1500) * 25; // 50-75
+        } else {
+          composite = 75 + Math.min(25, ((mq2_raw - 3000) / 1095) * 25); // 75-100
+        }
         readings.push({ timestamp: item.timestamp, value: composite, sensorType: "gas" });
       });
 
       // GPS → m/s + clamp + jumpSpeed Haversine
+      // New format: lat, lng, mode (REAL/SIMULATED)
       const gpsArr = takeNew(gpsRef.current, lastSentRef.current.gps) as any[];
       for (let i = 0; i < gpsArr.length; i++) {
         const cur = gpsArr[i];
         const prev = i > 0 ? gpsArr[i - 1] : null;
+        
+        // Get coordinates (support both old and new format)
+        const curLat = cur.lat ?? cur.latitude;
+        const curLng = cur.lng ?? cur.longitude;
+        const curMode = cur.mode;
+        
+        // If we have speed from GPS module, use it; otherwise calculate from haversine
         const rawSpeed = Number(cur?.speed ?? 0);
         const speedMps = rawSpeed > 40 ? rawSpeed / 3.6 : rawSpeed; // km/h → m/s
         let effectiveSpeed = speedMps;
 
         if (prev) {
+          const prevLat = prev.lat ?? prev.latitude;
+          const prevLng = prev.lng ?? prev.longitude;
           const dt = Math.max(0, (cur.timestamp - prev.timestamp) / 1000);
+          
           if (
             dt > 0 &&
-            typeof cur.latitude === "number" && typeof cur.longitude === "number" &&
-            typeof prev.latitude === "number" && typeof prev.longitude === "number"
+            typeof curLat === "number" && typeof curLng === "number" &&
+            typeof prevLat === "number" && typeof prevLng === "number"
           ) {
-            const dist = haversineMeters(prev.latitude, prev.longitude, cur.latitude, cur.longitude);
+            const dist = haversineMeters(prevLat, prevLng, curLat, curLng);
             const jumpSpeed = dist / dt;
             if (!Number.isNaN(jumpSpeed) && Number.isFinite(jumpSpeed)) {
               effectiveSpeed = Math.max(effectiveSpeed, jumpSpeed);
             }
           }
         }
+        
+        // Only process REAL GPS data for AI (skip SIMULATED to avoid false positives)
+        // But still calculate speed for both to show in UI
         const bounded = Math.max(0, Math.min(effectiveSpeed, GPS_MAX_MPS));
-        readings.push({ timestamp: cur.timestamp, value: bounded, sensorType: "gps" });
+        
+        // Only send to AI if mode is REAL or undefined (backward compatibility)
+        if (!curMode || curMode === "REAL") {
+          readings.push({ timestamp: cur.timestamp, value: bounded, sensorType: "gps" });
+        }
       }
 
       if (readings.length) {
         try {
-          await processSensorData(readings as any);
+          const result = await processSensorData(readings as any);
+
+          // Check result is object and has actuatorActions array
+          let actuatorActions: ActuatorCommand[] = [];
+          if (
+            result &&
+            typeof result === "object" &&
+            Array.isArray((result as any).actuatorActions)
+          ) {
+            actuatorActions = (result as { actuatorActions: ActuatorCommand[] }).actuatorActions;
+          }
+
+          if (actuatorActions.length) {
+            try {
+              await Promise.all(
+                actuatorActions.map((action) =>
+                  publishServoCommandToRTDB(SERVO_DEVICE_ID, action)
+                )
+              );
+            } catch (err) {
+              console.error("Failed to publish servo command:", err);
+            }
+          }
+
+          if (RELAY_AUTOMATION_ENABLED) {
+            let relayActions: RelayAutomationDecision[] = [];
+            if (
+              result &&
+              typeof result === "object" &&
+              Array.isArray((result as { relayActions?: RelayAutomationDecision[] }).relayActions)
+            ) {
+              relayActions = (result as { relayActions: RelayAutomationDecision[] }).relayActions;
+            }
+            const toPublish = relayActions.filter((d) => d.status === "executing");
+            for (const d of toPublish) {
+              try {
+                await publishRelayStateToRTDB(d.targetState);
+              } catch (err) {
+                console.error("Failed to publish relay state:", err);
+              }
+            }
+          }
           if (tempNew.length) lastSentRef.current.temperature = Math.max(lastSentRef.current.temperature || 0, tempNew.at(-1)!.timestamp);
           if (lightNew.length) lastSentRef.current.light = Math.max(lastSentRef.current.light || 0, lightNew.at(-1)!.timestamp);
           if (distNew.length) lastSentRef.current.distance = Math.max(lastSentRef.current.distance || 0, distNew.at(-1)!.timestamp);
@@ -254,11 +366,11 @@ export default function App() {
     gps: "m/s", // đổi về numeric để Stats dùng được
     gas: "ppm"
   };
-  const isLoading = loading || loadingLight || loadingDistance || loadingGps || loadingGas;
+  const isLoading = loading || loadingHumidity || loadingLight || loadingDistance || loadingGps || loadingGas;
 
   const latestAlert = alerts?.length ? alerts[alerts.length - 1] : null;
 
-  const reversedTemp = useMemo(() => [...filteredTemp].reverse(), [filteredTemp]);
+  const reversedTemp = useMemo(() => [...mergedTempData].reverse(), [mergedTempData]);
   const reversedLight = useMemo(() => [...filteredLight].reverse(), [filteredLight]);
   const reversedDistance = useMemo(() => [...filteredDistance].reverse(), [filteredDistance]);
   const reversedGps = useMemo(() => [...filteredGps].reverse(), [filteredGps]);
@@ -311,23 +423,24 @@ export default function App() {
             >
               <div className="flex justify-start gap-2 overflow-x-auto pb-2 scrollbar-hide px-3 sm:px-0">
                 {([
-                  { k: "temperature", label: "🌡️ Nhiệt độ", activeClass: "from-red-500 to-orange-500" },
-                  { k: "light", label: "💡 Ánh sáng", activeClass: "from-yellow-400 to-yellow-600" },
-                  { k: "distance", label: "📏 Khoảng cách", activeClass: "from-blue-500 to-purple-600" },
-                  { k: "gps", label: "🗺️ GPS", activeClass: "from-green-500 to-emerald-600" },
-                  { k: "gas", label: "🌬️ Khí gas", activeClass: "from-red-500 to-pink-600" }
-                ] as Array<{k: Sensor; label: string; activeClass: string}>).map((b) => (
+                  { k: "temperature", label: "Nhiệt độ", icon: FaThermometerHalf, activeClass: "from-red-500 to-orange-500" },
+                  { k: "light", label: "Ánh sáng", icon: FaLightbulb, activeClass: "from-yellow-400 to-yellow-600" },
+                  { k: "distance", label: "Khoảng cách", icon: FaRuler, activeClass: "from-blue-500 to-purple-600" },
+                  { k: "gps", label: "GPS", icon: FaMapMarkerAlt, activeClass: "from-green-500 to-emerald-600" },
+                  { k: "gas", label: "Khí gas", icon: FaWind, activeClass: "from-red-500 to-pink-600" }
+                ] as Array<{k: Sensor; label: string; icon: any; activeClass: string}>).map((b) => (
                   <motion.button
                     key={b.k}
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => setSensor(b.k)}
-                    className={`flex-shrink-0 px-3 py-2.5 sm:px-4 sm:py-2 md:px-6 md:py-3 rounded-lg text-xs sm:text-sm md:text-base font-medium transition-all duration-200 min-h-[44px] whitespace-nowrap ${
+                    className={`flex-shrink-0 px-3 py-2.5 sm:px-4 sm:py-2 md:px-6 md:py-3 rounded-lg text-xs sm:text-sm md:text-base font-medium transition-all duration-200 min-h-[44px] whitespace-nowrap flex items-center gap-2 outline-none focus:outline-none focus:ring-0 ${
                       sensor === b.k
                         ? `bg-gradient-to-r ${b.activeClass} text-white shadow-lg`
                         : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:shadow-md"
                     }`}
                   >
+                    <b.icon className={`flex-shrink-0 w-4 h-4 sm:w-5 sm:h-5 ${sensor === b.k ? 'text-white' : 'text-gray-600'}`} />
                     {b.label}
                   </motion.button>
                 ))}
@@ -336,31 +449,34 @@ export default function App() {
 
             {/* Time Range Stats */}
             <div className="mb-4 sm:mb-6">
-              <TimeRangeStats
-                data={
-                  sensor === "temperature" ? tempData :
-                  sensor === "light" ? (lightData as any) :
-                  sensor === "distance" ? (distanceData as any) :
-                  sensor === "gps" ? (gpsData as any) :
-                  (gasData as any)
-                }
-                selectedTimeRange={selectedTimeRange}
-                onTimeRangeChange={(m) => {
-                  setSelectedTimeRange(m);
-                  setCustomStartDate(null);
-                  setCustomEndDate(null);
-                }}
-                unitLabel={unitLabel[sensor]}
-                sensorType={sensor}
-                onDateRangeChange={(s, e) => {
-                  setCustomStartDate(s);
-                  setCustomEndDate(e);
-                }}
-                onClearDateRange={() => {
-                  setCustomStartDate(null);
-                  setCustomEndDate(null);
-                }}
-              />
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+                <TimeRangeStats
+                  data={
+                    sensor === "temperature" ? tempData :
+                    sensor === "light" ? (lightData as any) :
+                    sensor === "distance" ? (distanceData as any) :
+                    sensor === "gps" ? (gpsData as any) :
+                    (gasData as any)
+                  }
+                  selectedTimeRange={selectedTimeRange}
+                  onTimeRangeChange={(m) => {
+                    setSelectedTimeRange(m);
+                    setCustomStartDate(null);
+                    setCustomEndDate(null);
+                  }}
+                  unitLabel={unitLabel[sensor]}
+                  sensorType={sensor}
+                  onDateRangeChange={(s, e) => {
+                    setCustomStartDate(s);
+                    setCustomEndDate(e);
+                  }}
+                  onClearDateRange={() => {
+                    setCustomStartDate(null);
+                    setCustomEndDate(null);
+                  }}
+                />
+                <RelayController />
+              </div>
             </div>
 
             {/* AI Activity Monitor */}
@@ -372,9 +488,10 @@ export default function App() {
                 transition={{ duration: 0.5, delay: 0.2 }}
               >
                 <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2 sm:mb-3 flex items-center gap-2 flex-wrap">
-                  🤖 AI Activity Monitor
+                  <FaRobot className="text-purple-600" />
+                  AI Activity Monitor
                   <motion.span
-                    className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
                       systemStatus.isRunning
                         ? systemStatus.systemHealth === 'healthy' ? 'bg-green-100 text-green-800'
                         : systemStatus.systemHealth === 'warning' ? 'bg-yellow-100 text-yellow-800'
@@ -384,7 +501,17 @@ export default function App() {
                     animate={{ scale: [1, 1.1, 1] }}
                     transition={{ duration: 2, repeat: Infinity }}
                   >
-                    {systemStatus.isRunning ? '🟢 Active' : '🔴 Inactive'}
+                    {systemStatus.isRunning ? (
+                      <>
+                        <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                        Active
+                      </>
+                    ) : (
+                      <>
+                        <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                        Inactive
+                      </>
+                    )}
                   </motion.span>
                 </h3>
 
@@ -424,9 +551,15 @@ export default function App() {
                         </div>
                       </motion.div>
                       <motion.div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow" whileHover={{ scale: 1.05 }}>
-                        <div className="text-gray-600 text-xs">Threshold</div>
+                        <div className="text-gray-600 text-xs">Global Threshold</div>
                         <div className="text-lg font-semibold text-amber-700">
-                          {systemStatus.detectorMetrics.threshold.toFixed(4)}
+                          {systemStatus.detectorMetrics.globalThreshold.toFixed(4)}
+                        </div>
+                      </motion.div>
+                      <motion.div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow" whileHover={{ scale: 1.05 }}>
+                        <div className="text-gray-600 text-xs">Sensor Threshold</div>
+                        <div className="text-lg font-semibold text-cyan-700">
+                          {(systemStatus.detectorMetrics.sensorThresholds?.[sensor] ?? 0).toFixed(4)}
                         </div>
                       </motion.div>
                     </>
@@ -479,12 +612,15 @@ export default function App() {
               transition={{ duration: 0.5, delay: 0.3 }}
             >
               <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-3 sm:p-4 lg:p-6 hover:shadow-xl transition-shadow">
-                <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-800 mb-1">📈 Biểu đồ dữ liệu</h3>
+                <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-800 mb-1 flex items-center gap-2">
+                  <MdShowChart className="text-red-600" />
+                  Biểu đồ dữ liệu
+                </h3>
                 <p className="text-xs text-gray-500 mb-2 sm:mb-3">Dữ liệu real-time từ cảm biến</p>
                 <div className="h-48 sm:h-64 md:h-80 lg:h-96 w-full overflow-x-auto">
                   {sensor === "temperature" && (
                     <TemperatureChart
-                      data={filteredTemp}
+                      data={mergedTempData}
                       highlightTimestamp={latestAlert?.sensorType === 'temperature' ? latestAlert.timestamp : undefined}
                     />
                   )}
@@ -522,7 +658,10 @@ export default function App() {
             <div className="mb-4 sm:mb-6 lg:mb-8">
               <div className="bg-gray-50 rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                 <div className="px-3 py-2 sm:px-4 sm:py-3 lg:px-6 lg:py-4 border-b border-gray-200">
-                  <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-800">📋 Bảng dữ liệu</h3>
+                  <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-800 flex items-center gap-2">
+                    <HiClipboard className="text-amber-600" />
+                    Bảng dữ liệu
+                  </h3>
                 </div>
                 <div className="overflow-x-auto max-h-64 sm:max-h-80 lg:max-h-96 overflow-y-auto -mx-3 sm:mx-0">
                   {sensor === "temperature" && <TemperatureTable rows={reversedTemp} />}
@@ -534,10 +673,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Fake ESP Simulator for Testing Anomalies */}
-            <div className="mb-4 sm:mb-6 lg:mb-8">
-              <FakeESPSimulator />
-            </div>
           </>
         )}
       </div>

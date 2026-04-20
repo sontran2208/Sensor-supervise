@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { HiCheckCircle, HiExclamationCircle, HiXCircle, HiInformationCircle } from 'react-icons/hi'
 
 interface ToastProps {
   message: string
@@ -37,15 +38,15 @@ export default function ToastNotification({ message, type, duration = 5000, onCl
   const getIcon = () => {
     switch (type) {
       case 'error':
-        return '🚨'
+        return <HiXCircle className="w-5 h-5" />
       case 'warning':
-        return '⚠️'
+        return <HiExclamationCircle className="w-5 h-5" />
       case 'success':
-        return '✅'
+        return <HiCheckCircle className="w-5 h-5" />
       case 'info':
-        return 'ℹ️'
+        return <HiInformationCircle className="w-5 h-5" />
       default:
-        return '📢'
+        return <HiInformationCircle className="w-5 h-5" />
     }
   }
 
@@ -56,7 +57,7 @@ export default function ToastNotification({ message, type, duration = 5000, onCl
       isVisible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
     }`}>
       <div className={`${getToastStyles()} rounded-lg shadow-lg border p-4 flex items-start space-x-3`}>
-        <span className="text-lg">{getIcon()}</span>
+        <div className="flex-shrink-0 mt-0.5">{getIcon()}</div>
         <div className="flex-1">
           <p className="text-sm font-medium">{message}</p>
         </div>
@@ -65,9 +66,9 @@ export default function ToastNotification({ message, type, duration = 5000, onCl
             setIsVisible(false)
             setTimeout(onClose, 300)
           }}
-          className="text-white hover:text-gray-200 transition-colors"
+          className="text-white hover:text-gray-200 transition-colors flex-shrink-0"
         >
-          ✕
+          <HiXCircle className="w-4 h-4" />
         </button>
       </div>
     </div>

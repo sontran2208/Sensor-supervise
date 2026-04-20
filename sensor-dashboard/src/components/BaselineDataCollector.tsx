@@ -8,6 +8,8 @@ import { useEdgeAI } from '../hooks/useEdgeAI'
 import { loadBaselineFromFile, saveBaselineToIndexedDB, loadBaselineFromIndexedDB } from '../utils/baselineLoader'
 import type { SensorReading } from '../ai/EdgeAnomalyDetector'
 import toast from 'react-hot-toast'
+import { HiChartBar, HiFolder, HiRefresh } from 'react-icons/hi'
+import { FaHourglassHalf, FaRocket } from 'react-icons/fa'
 
 export default function BaselineDataCollector() {
   const [collecting, setCollecting] = useState(false)
@@ -65,8 +67,19 @@ export default function BaselineDataCollector() {
       })
       
       gasData.forEach(d => {
-        // Composite gas value using available properties
-        const composite = (d.co2 || 0) * 0.4 + (d.smoke || 0) * 0.3 + (d.airQuality || 0) * 0.3
+        // Sử dụng mq2_raw (format mới từ Arduino code)
+        // Chuyển đổi mq2_raw thành giá trị composite (0-100) cho baseline
+        const mq2_raw = d.mq2_raw || 0;
+        let composite = 0;
+        if (mq2_raw < 500) {
+          composite = (mq2_raw / 500) * 25; // 0-25
+        } else if (mq2_raw < 1500) {
+          composite = 25 + ((mq2_raw - 500) / 1000) * 25; // 25-50
+        } else if (mq2_raw < 3000) {
+          composite = 50 + ((mq2_raw - 1500) / 1500) * 25; // 50-75
+        } else {
+          composite = 75 + Math.min(25, ((mq2_raw - 3000) / 1095) * 25); // 75-100
+        }
         readings.push({
           timestamp: d.timestamp,
           value: composite,
@@ -218,7 +231,19 @@ export default function BaselineDataCollector() {
               : 'bg-gradient-to-r from-blue-500 via-cyan-500 to-teal-500 hover:from-blue-600 hover:via-cyan-600 hover:to-teal-600 shadow-lg hover:shadow-xl transform hover:scale-[1.02]'
           }`}
         >
-          {collecting ? '⏳ Đang collect...' : '📊 Collect Baseline (60 phút gần nhất)'}
+          <span className="flex items-center justify-center gap-2">
+            {collecting ? (
+              <>
+                <FaHourglassHalf className="w-4 h-4 animate-spin" />
+                Đang collect...
+              </>
+            ) : (
+              <>
+                <HiChartBar className="w-4 h-4" />
+                Collect Baseline (60 phút gần nhất)
+              </>
+            )}
+          </span>
         </button>
 
         <div className="flex gap-2">
@@ -227,7 +252,10 @@ export default function BaselineDataCollector() {
               ? 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-600 cursor-not-allowed opacity-60'
               : 'bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white hover:from-indigo-600 hover:via-purple-600 hover:to-pink-600 shadow-md hover:shadow-lg transform hover:scale-[1.02]'
           }`}>
-            📁 Load từ File
+            <span className="flex items-center justify-center gap-2">
+              <HiFolder className="w-4 h-4" />
+              Load từ File
+            </span>
             <input
               ref={fileInputRef}
               type="file"
@@ -246,7 +274,10 @@ export default function BaselineDataCollector() {
                 : 'bg-gradient-to-r from-violet-500 via-fuchsia-500 to-rose-500 text-white hover:from-violet-600 hover:via-fuchsia-600 hover:to-rose-600 shadow-md hover:shadow-lg transform hover:scale-[1.02]'
             }`}
           >
-            🔄 Load từ IndexedDB
+            <span className="flex items-center justify-center gap-2">
+              <HiRefresh className="w-4 h-4" />
+              Load từ IndexedDB
+            </span>
           </button>
         </div>
 
@@ -259,7 +290,19 @@ export default function BaselineDataCollector() {
               : 'bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 hover:from-green-600 hover:via-emerald-600 hover:to-teal-600 shadow-lg hover:shadow-xl transform hover:scale-[1.02]'
           }`}
         >
-          {training ? '⏳ Đang train...' : '🚀 Train Model từ Baseline'}
+          <span className="flex items-center justify-center gap-2">
+            {training ? (
+              <>
+                <FaHourglassHalf className="w-4 h-4 animate-spin" />
+                Đang train...
+              </>
+            ) : (
+              <>
+                <FaRocket className="w-4 h-4" />
+                Train Model từ Baseline
+              </>
+            )}
+          </span>
         </button>
       </div>
 

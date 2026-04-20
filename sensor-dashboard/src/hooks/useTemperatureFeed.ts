@@ -34,6 +34,8 @@ export function useTemperatureFeed(
             // Support both numeric millis and Firestore Timestamp
             let ts: number;
             const value = Number(raw.value);
+            const humidityRaw = Number(raw.humidity);
+            const humidity = Number.isFinite(humidityRaw) ? humidityRaw : undefined;
             if (raw.timestamp instanceof Timestamp) {
               ts = raw.timestamp.toMillis();
             } else {
@@ -42,7 +44,7 @@ export function useTemperatureFeed(
             if (!Number.isFinite(ts) || !Number.isFinite(value)) {
               return null;
             }
-            return { id: d.id, timestamp: ts, value } as TemperatureDoc;
+            return { id: d.id, timestamp: ts, value, humidity } as TemperatureDoc;
           })
           .filter(Boolean) as TemperatureDoc[];
         let filtered = items;

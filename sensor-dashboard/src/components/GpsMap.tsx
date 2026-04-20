@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GpsDoc } from '../hooks/useGps';
+import { FaMapMarkerAlt } from 'react-icons/fa';
+import { HiExclamationCircle } from 'react-icons/hi';
 
 interface Props {
   data: GpsDoc[];
@@ -132,7 +134,7 @@ export default function GpsMap({ data }: Props) {
     return (
       <div className="h-64 bg-gray-100 rounded-lg flex items-center justify-center">
         <div className="text-center text-gray-500">
-          <div className="text-4xl mb-2">🗺️</div>
+          <FaMapMarkerAlt className="text-4xl mx-auto mb-2 text-gray-400" />
           <p>No GPS data available</p>
         </div>
       </div>
@@ -143,7 +145,7 @@ export default function GpsMap({ data }: Props) {
     return (
       <div className="h-64 bg-red-50 rounded-lg flex items-center justify-center border border-red-200">
         <div className="text-center text-red-600">
-          <div className="text-4xl mb-2">⚠️</div>
+          <HiExclamationCircle className="text-4xl mx-auto mb-2 text-red-500" />
           <p>{mapError}</p>
           <p className="text-sm mt-2">
             {mapError.includes('API') ? 'Please check your Google Maps API key in .env file' : 'Please try again'}

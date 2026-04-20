@@ -1,9 +1,14 @@
 import { SensorManager } from './SensorManager'
 import { ResponseOptimizer } from './ResponseOptimizer'
 import { EdgeAnomalyDetector } from './EdgeAnomalyDetector'
+import { ActuatorController, type ActuatorCommand } from './ActuatorController'
+import {
+  RelayAutomationController,
+  type RelayAutomationDecision
+} from './RelayAutomationController'
 import type { SensorManagerConfig } from './SensorManager'
 import type { ResponseOptimizerConfig } from './ResponseOptimizer'
-import type { SensorReading, AnomalyResult } from './EdgeAnomalyDetector'
+import type { SensorReading, AnomalyResult, SensorOptimization } from './EdgeAnomalyDetector'
 
 export interface EdgeAISystemConfig {
   sensorManager: SensorManagerConfig
@@ -20,12 +25,23 @@ export interface SystemStatus {
   systemHealth: 'healthy' | 'warning' | 'critical'
   uptime: number
   lastUpdate: number
-  detectorMetrics?: { latestError: number | null; threshold: number }
+  detectorMetrics?: {
+    latestError: number | null
+    threshold: number
+    globalThreshold: number
+    sensorThresholds: Record<string, number>
+  }
   trainingStatus?: {
     isTrained: boolean
     trainingType: 'baseline' | 'synthetic' | 'none'
     baselineLoaded: boolean
     modelLoaded: boolean
+  }
+  optimizations?: SensorOptimization[]
+  relayAutomation?: {
+    relayState: 'ON' | 'OFF'
+    lastDecision: RelayAutomationDecision | null
+    recentDecisions: RelayAutomationDecision[]
   }
 }
 
@@ -33,6 +49,8 @@ export class EdgeAISystem {
   private sensorManager: SensorManager
   private responseOptimizer: ResponseOptimizer
   private detector: EdgeAnomalyDetector
+  private actuatorController: ActuatorController
+  private relayAutomationController: RelayAutomationController
   private config: EdgeAISystemConfig
   private startTime: number
   private isRunning: boolean = false
@@ -42,10 +60,12 @@ export class EdgeAISystem {
     this.config = config
     this.startTime = Date.now()
     
-    // Initialize components
-    this.sensorManager = new SensorManager(config.sensorManager)
-    this.responseOptimizer = new ResponseOptimizer(this.sensorManager, config.responseOptimizer)
+    // Single detector shared with SensorManager — status/training/persistence must match inference
     this.detector = new EdgeAnomalyDetector()
+    this.sensorManager = new SensorManager(config.sensorManager, this.detector)
+    this.responseOptimizer = new ResponseOptimizer(this.sensorManager, config.responseOptimizer)
+    this.actuatorController = new ActuatorController()
+    this.relayAutomationController = new RelayAutomationController()
     
     this.log('info', 'Edge AI System initialized')
   }
@@ -94,6 +114,9 @@ export class EdgeAISystem {
     anomalyResult?: AnomalyResult
     responses?: any[]
     alerts?: any[]
+    actuatorActions?: ActuatorCommand[]
+    relayActions?: RelayAutomationDecision[]
+    optimizations?: SensorOptimization[]
   }> {
     if (!this.isRunning) {
       throw new Error('System is not running')
@@ -117,6 +140,40 @@ export class EdgeAISystem {
             severity: result.anomalyResult.severity,
             confidence: result.anomalyResult.confidence
           })
+        }
+
+        if (Array.isArray(result.optimization) && result.optimization.length > 0) {
+          if (!results.optimizations) results.optimizations = []
+          result.optimization.forEach((optimization: SensorOptimization) => {
+            const existingIndex = results.optimizations.findIndex(
+              (item: SensorOptimization) => item.sensorType === optimization.sensorType
+            )
+            if (existingIndex >= 0) {
+              results.optimizations[existingIndex] = optimization
+            } else {
+              results.optimizations.push(optimization)
+            }
+          })
+        }
+
+        const actuatorAction = this.actuatorController.evaluateTemperatureAutomation(
+          reading,
+          result.anomalyResult
+        )
+        if (actuatorAction) {
+          if (!results.actuatorActions) results.actuatorActions = []
+          results.actuatorActions.push(actuatorAction)
+          this.log('info', `Actuator command ${actuatorAction.action}`, actuatorAction)
+        }
+
+        const relayDecision = this.relayAutomationController.evaluate(
+          reading,
+          result.anomalyResult
+        )
+        if (relayDecision) {
+          if (!results.relayActions) results.relayActions = []
+          results.relayActions.push(relayDecision)
+          this.log('info', `Relay automation ${relayDecision.targetState}`, relayDecision)
         }
         
         if (result.alert) {
@@ -182,12 +239,23 @@ export class EdgeAISystem {
     const anyDetector: any = this.detector as any
     const metrics = {
       latestError: typeof anyDetector.getLatestError === 'function' ? anyDetector.getLatestError() : null,
-      threshold: typeof anyDetector.getCurrentThreshold === 'function' ? anyDetector.getCurrentThreshold() : 0
+      threshold: typeof anyDetector.getCurrentThreshold === 'function' ? anyDetector.getCurrentThreshold() : 0,
+      globalThreshold: typeof anyDetector.getCurrentThreshold === 'function' ? anyDetector.getCurrentThreshold() : 0,
+      sensorThresholds: typeof anyDetector.getSensorThresholdsForDisplay === 'function'
+        ? anyDetector.getSensorThresholdsForDisplay()
+        : {}
     }
 
     const trainingStatus = typeof anyDetector.getTrainingStatus === 'function' 
       ? anyDetector.getTrainingStatus() 
       : undefined
+    const optimizations = Array.from(this.sensorManager.getAllOptimizations().values())
+    const relayHistory = this.relayAutomationController.getHistory()
+    const relayAutomation = {
+      relayState: this.relayAutomationController.getRelayState(),
+      lastDecision: relayHistory.length > 0 ? relayHistory[relayHistory.length - 1] : null,
+      recentDecisions: relayHistory.slice(-3).reverse()
+    }
 
     return {
       isRunning: this.isRunning,
@@ -198,7 +266,9 @@ export class EdgeAISystem {
       uptime: Date.now() - this.startTime,
       lastUpdate: Date.now(),
       detectorMetrics: metrics,
-      trainingStatus
+      trainingStatus,
+      optimizations,
+      relayAutomation
     }
   }
 
@@ -212,6 +282,14 @@ export class EdgeAISystem {
 
   public getActiveResponses(): any[] {
     return this.responseOptimizer.getActiveResponses()
+  }
+
+  public getActuatorHistory(): ActuatorCommand[] {
+    return this.actuatorController.getHistory()
+  }
+
+  public getServoState(): 'open' | 'closed' {
+    return this.actuatorController.getServoState()
   }
 
   public getResponseHistory(): any[] {
@@ -313,6 +391,15 @@ export class EdgeAISystem {
     }
   }
 
+  public resetThreshold(): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const anyDetector: any = this.detector as any
+    if (typeof anyDetector.resetThresholdState === 'function') {
+      anyDetector.resetThresholdState()
+      this.log('info', 'Detector threshold state reset')
+    }
+  }
+
   public addCustomOptimizationRule(rule: any): void {
     this.responseOptimizer.addCustomRule(rule)
     this.log('info', `Added custom optimization rule: ${rule.name}`)
@@ -376,6 +463,8 @@ export class EdgeAISystem {
     this.sensorManager.dispose()
     this.responseOptimizer.dispose()
     this.detector.dispose()
+    this.actuatorController.reset()
+    this.relayAutomationController.reset()
     this.systemLogs = []
     this.log('info', 'Edge AI System disposed')
   }
@@ -389,8 +478,8 @@ export function createEdgeAISystem(): EdgeAISystem {
       detectionInterval: 5000, // 5 seconds
       maxHistorySize: 100,
       enableOptimization: true,
-      alertThrottleMs: 30000,
-      dedupWindowMs: 15000,
+      alertThrottleMs: 12000,
+      dedupWindowMs: 10000,
       optimizationThrottleMs: 10000
     },
     responseOptimizer: {

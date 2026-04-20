@@ -10,13 +10,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/android": "^7.4.4",
+    "@capacitor/core": "^7.4.4",
     "@dataconnect/generated": "file:src/dataconnect-generated",
+    "@emotion/is-prop-valid": "^1.4.0",
     "@headlessui/react": "^2.2.9",
     "@mediapipe/drawing_utils": "^0.3.1675466124",
     "@mediapipe/hands": "^0.4.1675469240",
     "@tailwindcss/vite": "^4.1.14",
     "@tensorflow/tfjs": "^4.22.0",
     "@types/google.maps": "^3.58.1",
+    "abortcontroller-polyfill": "^1.7.8",
     "chart.js": "^4.5.1",
     "dayjs": "^1.11.18",
     "firebase": "^12.3.0",
@@ -26,12 +30,15 @@
     "react-chartjs-2": "^5.3.0",
     "react-dom": "^19.1.1",
     "react-hot-toast": "^2.6.0",
+    "react-icons": "^5.5.0",
     "recharts": "^3.2.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.4.4",
     "@eslint/js": "^9.36.0",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-legacy": "^7.2.1",
     "@vitejs/plugin-react": "^5.0.3",
     "autoprefixer": "^10.4.21",
     "eslint": "^9.36.0",

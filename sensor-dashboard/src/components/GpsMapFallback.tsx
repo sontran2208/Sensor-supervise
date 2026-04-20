@@ -1,4 +1,5 @@
 import type { GpsDoc } from '../hooks/useGps';
+import { FaMapMarkerAlt } from 'react-icons/fa';
 
 interface Props {
   data: GpsDoc[];
@@ -9,7 +10,7 @@ export default function GpsMapFallback({ data }: Props) {
     return (
       <div className="h-64 bg-gray-100 rounded-lg flex items-center justify-center">
         <div className="text-center text-gray-500">
-          <div className="text-4xl mb-2">🗺️</div>
+          <FaMapMarkerAlt className="text-4xl mx-auto mb-2 text-gray-400" />
           <p>No GPS data available</p>
         </div>
       </div>
@@ -19,10 +20,13 @@ export default function GpsMapFallback({ data }: Props) {
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-lg p-4 border border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-800 mb-3">📍 GPS Coordinates</h3>
+        <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+          <FaMapMarkerAlt className="text-blue-600" />
+          GPS Coordinates
+        </h3>
         <div className="h-64 bg-gray-50 rounded-lg border border-gray-300 flex items-center justify-center">
           <div className="text-center text-gray-600">
-            <div className="text-4xl mb-2">🗺️</div>
+            <FaMapMarkerAlt className="text-4xl mx-auto mb-2 text-gray-400" />
             <p>Map requires Google Maps API key</p>
             <p className="text-sm mt-1">See GOOGLE_MAPS_SETUP.md for instructions</p>
           </div>
@@ -58,7 +62,10 @@ export default function GpsMapFallback({ data }: Props) {
 
       {/* GPS Data Table */}
       <div className="bg-white rounded-lg p-4 border border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-800 mb-3">📍 GPS Data Points</h3>
+        <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+          <FaMapMarkerAlt className="text-blue-600" />
+          GPS Data Points
+        </h3>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">

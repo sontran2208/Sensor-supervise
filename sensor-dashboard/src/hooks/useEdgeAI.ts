@@ -7,7 +7,11 @@ let statusInterval: number | null = null
 
 function ensureSharedWorker(): Worker {
   if (!sharedWorker) {
-    const worker = new Worker(new URL('../ai/edgeAiWorker.ts', import.meta.url), { type: 'module' })
+    const isCapacitor = typeof (window as any).Capacitor !== 'undefined'
+    const workerUrl = new URL('../ai/edgeAiWorker.ts', import.meta.url)
+    const worker = isCapacitor
+      ? new Worker(workerUrl)
+      : new Worker(workerUrl, { type: 'module' })
     worker.addEventListener('message', (event: MessageEvent) => {
       messageListeners.forEach((listener) => listener(event))
     })
@@ -24,11 +28,21 @@ export function useEdgeAI() {
   const [isRunning, setIsRunning] = useState(false)
   const [systemStatus, setSystemStatus] = useState<any>(null)
   const [alerts, setAlerts] = useState<any[]>([])
-  const [optimizations] = useState<Map<string, any>>(new Map())
+  const [optimizations, setOptimizations] = useState<Map<string, any>>(new Map())
 
   useEffect(() => {
     const workerInstance = ensureSharedWorker()
     setWorker(workerInstance)
+
+    const syncOptimizations = (items: any[] | undefined) => {
+      const next = new Map<string, any>()
+      ;(items || []).forEach((optimization) => {
+        if (optimization?.sensorType) {
+          next.set(optimization.sensorType, optimization)
+        }
+      })
+      setOptimizations(next)
+    }
 
     const handleMessage = (e: MessageEvent) => {
       const msg = e.data
@@ -39,9 +53,21 @@ export function useEdgeAI() {
         if (msg.payload && Array.isArray(msg.payload.alerts)) {
           setAlerts(msg.payload.alerts)
         }
+        syncOptimizations(msg.payload?.optimizations)
       } else if (msg.type === 'result') {
         const r = msg.payload
         if (r?.alerts) setAlerts(r.alerts)
+        if (Array.isArray(r?.optimizations)) {
+          setOptimizations((prev) => {
+            const next = new Map(prev)
+            r.optimizations.forEach((optimization: any) => {
+              if (optimization?.sensorType) {
+                next.set(optimization.sensorType, optimization)
+              }
+            })
+            return next
+          })
+        }
       }
     }
 
@@ -153,6 +179,20 @@ export function useEdgeAI() {
     })
   }, [worker])
 
+  const resetThreshold = useCallback(async () => {
+    if (!worker) return { ok: false, error: 'Worker not initialized' }
+    return new Promise<{ ok: boolean; error?: string }>((resolve) => {
+      const handle = (e: MessageEvent) => {
+        if (e.data?.type === 'resetThreshold_result') {
+          worker.removeEventListener('message', handle as any)
+          resolve({ ok: Boolean(e.data?.ok), error: e.data?.error })
+        }
+      }
+      worker.addEventListener('message', handle as any)
+      worker.postMessage({ type: 'resetThreshold' })
+    })
+  }, [worker])
+
   const getSystemLogs = useCallback(() => [], [])
   const getAllSensorStats = useCallback(() => new Map(), [])
   const getResponseHistory = useCallback(() => [], [])
@@ -173,7 +213,8 @@ export function useEdgeAI() {
     updateConfig,
     labelAlert,
     exportEvaluation,
-    trainFromBaseline
+    trainFromBaseline,
+    resetThreshold
   }
 }
 

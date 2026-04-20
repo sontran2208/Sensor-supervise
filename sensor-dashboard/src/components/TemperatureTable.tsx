@@ -14,6 +14,7 @@ export function TemperatureTable({ rows }: Props) {
             <th className="text-left border-b border-gray-300 p-1.5 sm:p-2 text-xs sm:text-sm font-semibold text-gray-800">#</th>
             <th className="text-left border-b border-gray-300 p-1.5 sm:p-2 text-xs sm:text-sm font-semibold text-gray-800">Thời gian</th>
             <th className="text-left border-b border-gray-300 p-1.5 sm:p-2 text-xs sm:text-sm font-semibold text-gray-800">Nhiệt độ (°C)</th>
+            <th className="text-left border-b border-gray-300 p-1.5 sm:p-2 text-xs sm:text-sm font-semibold text-gray-800">Độ ẩm (%)</th>
           </tr>
         </thead>
         <tbody>
@@ -22,11 +23,14 @@ export function TemperatureTable({ rows }: Props) {
               <td className="border-b border-gray-200 p-1.5 sm:p-2 text-xs sm:text-sm text-gray-700">{idx + 1}</td>
               <td className="border-b border-gray-200 p-1.5 sm:p-2 text-xs sm:text-sm text-gray-700 whitespace-nowrap">{dayjs(r.timestamp).format('YYYY-MM-DD HH:mm:ss')}</td>
               <td className="border-b border-gray-200 p-1.5 sm:p-2 text-xs sm:text-sm text-gray-700 font-medium">{r.value.toFixed(2)}</td>
+              <td className="border-b border-gray-200 p-1.5 sm:p-2 text-xs sm:text-sm text-gray-700 font-medium">
+                {typeof r.humidity === 'number' ? r.humidity.toFixed(2) : '--'}
+              </td>
             </tr>
           ))}
           {!rows.length && (
             <tr>
-              <td className="border-b border-gray-200 p-1.5 sm:p-2 text-xs sm:text-sm text-center text-gray-500" colSpan={3}>Không có dữ liệu</td>
+              <td className="border-b border-gray-200 p-1.5 sm:p-2 text-xs sm:text-sm text-center text-gray-500" colSpan={4}>Không có dữ liệu</td>
             </tr>
           )}
         </tbody>

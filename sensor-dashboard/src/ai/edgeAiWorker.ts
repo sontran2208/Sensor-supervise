@@ -9,6 +9,7 @@
 // { type: 'labelAlert', id: string, label: 'tp'|'fp'|'tn'|'fn' }
 // { type: 'exportEval' }
 // { type: 'trainFromBaseline', sensorData: SensorReading[] }
+// { type: 'resetThreshold' }
 // Responses:
 // { type: 'ready' }
 // { type: 'result', payload }
@@ -215,6 +216,18 @@ self.onmessage = async (e: MessageEvent) => {
           ;(self as any).postMessage({ type: 'train_result', ok: true })
         } catch (e: any) {
           ;(self as any).postMessage({ type: 'train_result', ok: false, error: String(e?.message || e) })
+        }
+        break
+      }
+      case 'resetThreshold': {
+        await ensureStarted()
+        try {
+          system.resetThreshold()
+          const state = system.getDetectorState()
+          if (state) await idbSet(KEY, state)
+          ;(self as any).postMessage({ type: 'resetThreshold_result', ok: true })
+        } catch (e: any) {
+          ;(self as any).postMessage({ type: 'resetThreshold_result', ok: false, error: String(e?.message || e) })
         }
         break
       }

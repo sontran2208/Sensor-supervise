@@ -1,4 +1,6 @@
 import type { GasDoc } from '../hooks/useGas';
+import { FaWind } from 'react-icons/fa';
+import { HiCheckCircle, HiExclamationCircle, HiBell } from 'react-icons/hi';
 
 interface Props {
   data: GasDoc[];
@@ -9,35 +11,72 @@ export default function GasDashboard({ data }: Props) {
     return (
       <div className="h-64 bg-gray-100 rounded-lg flex items-center justify-center">
         <div className="text-center text-gray-500">
-          <div className="text-4xl mb-2">🌬️</div>
+          <FaWind className="text-4xl mx-auto mb-2 text-gray-400" />
           <p>No gas sensor data available</p>
         </div>
       </div>
     );
   }
 
-  const latest = data[0];
-  const getAirQualityStatus = (aqi: number) => {
-    if (aqi <= 50) return { text: 'Good', color: 'bg-green-500', textColor: 'text-green-800' };
-    if (aqi <= 100) return { text: 'Moderate', color: 'bg-yellow-500', textColor: 'text-yellow-800' };
-    if (aqi <= 150) return { text: 'Unhealthy for Sensitive', color: 'bg-orange-500', textColor: 'text-orange-800' };
-    if (aqi <= 200) return { text: 'Unhealthy', color: 'bg-red-500', textColor: 'text-red-800' };
-    if (aqi <= 300) return { text: 'Very Unhealthy', color: 'bg-purple-500', textColor: 'text-purple-800' };
-    return { text: 'Hazardous', color: 'bg-red-800', textColor: 'text-red-100' };
+  const latest = data[data.length - 1]; // Lấy giá trị mới nhất (data được sort tăng dần theo timestamp)
+  
+  // Hàm xác định mức độ gas dựa trên mq2_raw (0-4095 cho ESP32 ADC)
+  const getGasLevel = (raw: number) => {
+    if (raw < 500) return { 
+      text: 'Low', 
+      color: 'bg-green-500', 
+      textColor: 'text-green-800',
+      status: 'Normal',
+      icon: <HiCheckCircle className="w-4 h-4" />
+    };
+    if (raw < 1500) return { 
+      text: 'Medium', 
+      color: 'bg-yellow-500', 
+      textColor: 'text-yellow-800',
+      status: 'Moderate',
+      icon: <HiExclamationCircle className="w-4 h-4" />
+    };
+    if (raw < 3000) return { 
+      text: 'High', 
+      color: 'bg-orange-500', 
+      textColor: 'text-orange-800',
+      status: 'High',
+      icon: <HiExclamationCircle className="w-4 h-4" />
+    };
+    return { 
+      text: 'Very High', 
+      color: 'bg-red-500', 
+      textColor: 'text-red-800',
+      status: 'Very High',
+      icon: <HiBell className="w-4 h-4" />
+    };
   };
 
-  const aqiStatus = getAirQualityStatus(latest.airQuality);
+  const gasLevel = getGasLevel(latest.mq2_raw);
+
+  // Tính toán thống kê
+  const values = data.map(d => d.mq2_raw);
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
 
   return (
     <div className="space-y-6">
-      {/* Air Quality Status */}
+      {/* MQ-2 Sensor Status */}
       <div className="bg-white rounded-lg p-6 border border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">🌬️ Air Quality Status</h3>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+          <FaWind className="text-blue-600" />
+          MQ-2 Gas Sensor Status
+        </h3>
         <div className="flex items-center justify-between">
           <div>
-            <div className={`inline-flex items-center px-4 py-2 rounded-full ${aqiStatus.color} ${aqiStatus.textColor}`}>
-              <span className="text-lg font-bold">{latest.airQuality.toFixed(0)}</span>
-              <span className="ml-2 text-sm font-medium">{aqiStatus.text}</span>
+            <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full ${gasLevel.color} ${gasLevel.textColor}`}>
+              {gasLevel.icon}
+              <span className="text-lg font-bold">{latest.mq2_raw.toFixed(0)}</span>
+              <span className="text-sm font-medium">{gasLevel.text}</span>
+            </div>
+            <div className="mt-2 text-sm text-gray-600">
+              Raw ADC Value (0-4095)
             </div>
           </div>
           <div className="text-right">
@@ -47,98 +86,60 @@ export default function GasDashboard({ data }: Props) {
         </div>
       </div>
 
-      {/* Gas Levels Grid */}
+      {/* Statistics Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-red-50 rounded-lg p-4 text-center border border-red-200">
-          <div className="text-2xl font-bold text-red-600">
-            {latest.co.toFixed(1)}
-          </div>
-          <div className="text-sm text-red-800">CO (ppm)</div>
-          <div className="text-xs text-red-600 mt-1">
-            {latest.co > 9 ? '⚠️ High' : '✅ Normal'}
-          </div>
-        </div>
-
         <div className="bg-blue-50 rounded-lg p-4 text-center border border-blue-200">
           <div className="text-2xl font-bold text-blue-600">
-            {latest.co2.toFixed(0)}
+            {latest.mq2_raw.toFixed(0)}
           </div>
-          <div className="text-sm text-blue-800">CO2 (ppm)</div>
-          <div className="text-xs text-blue-600 mt-1">
-            {latest.co2 > 1000 ? '⚠️ High' : '✅ Normal'}
-          </div>
-        </div>
-
-        <div className="bg-yellow-50 rounded-lg p-4 text-center border border-yellow-200">
-          <div className="text-2xl font-bold text-yellow-600">
-            {latest.smoke.toFixed(1)}
-          </div>
-          <div className="text-sm text-yellow-800">Smoke</div>
-          <div className="text-xs text-yellow-600 mt-1">
-            {latest.smoke > 300 ? '⚠️ High' : '✅ Normal'}
+          <div className="text-sm text-blue-800">Current Value</div>
+          <div className="text-xs text-blue-600 mt-1 flex items-center justify-center gap-1">
+            {gasLevel.icon}
+            {gasLevel.status}
           </div>
         </div>
 
         <div className="bg-green-50 rounded-lg p-4 text-center border border-green-200">
           <div className="text-2xl font-bold text-green-600">
-            {latest.lpg.toFixed(1)}
+            {avg.toFixed(0)}
           </div>
-          <div className="text-sm text-green-800">LPG</div>
+          <div className="text-sm text-green-800">Average</div>
           <div className="text-xs text-green-600 mt-1">
-            {latest.lpg > 200 ? '⚠️ High' : '✅ Normal'}
+            Over {data.length} readings
           </div>
         </div>
 
         <div className="bg-purple-50 rounded-lg p-4 text-center border border-purple-200">
           <div className="text-2xl font-bold text-purple-600">
-            {latest.methane.toFixed(1)}
+            {min.toFixed(0)}
           </div>
-          <div className="text-sm text-purple-800">Methane</div>
+          <div className="text-sm text-purple-800">Minimum</div>
           <div className="text-xs text-purple-600 mt-1">
-            {latest.methane > 1000 ? '⚠️ High' : '✅ Normal'}
+            Lowest reading
           </div>
         </div>
 
-        <div className="bg-indigo-50 rounded-lg p-4 text-center border border-indigo-200">
-          <div className="text-2xl font-bold text-indigo-600">
-            {latest.hydrogen.toFixed(1)}
+        <div className="bg-red-50 rounded-lg p-4 text-center border border-red-200">
+          <div className="text-2xl font-bold text-red-600">
+            {max.toFixed(0)}
           </div>
-          <div className="text-sm text-indigo-800">Hydrogen</div>
-          <div className="text-xs text-indigo-600 mt-1">
-            {latest.hydrogen > 100 ? '⚠️ High' : '✅ Normal'}
-          </div>
-        </div>
-
-        <div className="bg-gray-50 rounded-lg p-4 text-center border border-gray-200">
-          <div className="text-2xl font-bold text-gray-600">
-            {latest.temperature.toFixed(1)}°C
-          </div>
-          <div className="text-sm text-gray-800">Temperature</div>
-          <div className="text-xs text-gray-600 mt-1">
-            {latest.temperature > 30 ? '🌡️ Hot' : latest.temperature < 10 ? '❄️ Cold' : '🌤️ Normal'}
-          </div>
-        </div>
-
-        <div className="bg-cyan-50 rounded-lg p-4 text-center border border-cyan-200">
-          <div className="text-2xl font-bold text-cyan-600">
-            {latest.humidity.toFixed(1)}%
-          </div>
-          <div className="text-sm text-cyan-800">Humidity</div>
-          <div className="text-xs text-cyan-600 mt-1">
-            {latest.humidity > 70 ? '💧 Humid' : latest.humidity < 30 ? '🏜️ Dry' : '🌤️ Normal'}
+          <div className="text-sm text-red-800">Maximum</div>
+          <div className="text-xs text-red-600 mt-1">
+            Highest reading
           </div>
         </div>
       </div>
 
       {/* Safety Alerts */}
-      {(latest.co > 9 || latest.co2 > 1000 || latest.smoke > 300 || latest.lpg > 200) && (
+      {latest.mq2_raw >= 1500 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-center">
-            <div className="text-2xl mr-3">⚠️</div>
+            <HiExclamationCircle className="text-2xl mr-3 text-red-600" />
             <div>
-              <h4 className="text-lg font-semibold text-red-800">Safety Alert</h4>
+              <h4 className="text-lg font-semibold text-red-800">Gas Level Alert</h4>
               <p className="text-sm text-red-700">
-                High levels of dangerous gases detected. Please ensure proper ventilation and consider evacuation if necessary.
+                High gas level detected (Raw value: {latest.mq2_raw.toFixed(0)}). 
+                Please ensure proper ventilation and consider evacuation if necessary.
               </p>
             </div>
           </div>

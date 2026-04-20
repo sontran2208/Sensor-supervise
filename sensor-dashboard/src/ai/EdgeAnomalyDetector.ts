@@ -13,6 +13,8 @@ export interface AnomalyResult {
   severity: 'low' | 'medium' | 'high' | 'critical'
   anomalyType: 'outlier' | 'drift' | 'spike' | 'pattern_break'
   affectedSensors: string[]
+  globalThreshold: number
+  sensorThresholds: Record<string, number>
   recommendation: string
   timestamp: number
 }
@@ -318,6 +320,10 @@ export class EdgeAnomalyDetector {
       this.updateRunningStats(sensorData)
       // Extract current features and build sequence window
       const features = this.extractFeatures(sensorData)
+      const previousFeatures =
+        this.featureHistory.length > 0
+          ? this.featureHistory[this.featureHistory.length - 1]
+          : null
       this.featureHistory.push(features)
       if (this.featureHistory.length > this.maxHistoryLength) {
         this.featureHistory.shift()
@@ -335,13 +341,12 @@ export class EdgeAnomalyDetector {
         this.reconstructionErrorHistory.shift()
       }
       
-      // Classify anomaly type first (needed for adaptive threshold)
-      const anomalyType = this.classifyAnomalyType(features, mse)
-      
-      // Determine anomaly with adaptive threshold based on anomaly type
-      const threshold = this.calculateThreshold(anomalyType)
-      const isAnomaly = mse > threshold
-      const confidence = Math.min(mse / threshold, 1.0)
+      const anomalyType: AnomalyResult['anomalyType'] = 'spike'
+      const threshold = this.calculateThreshold()
+      const sensorThresholds = this.getSensorThresholds()
+      const jump = this.calculateSpikeJump(features, previousFeatures)
+      const isAnomaly = mse > threshold || jump > 2.2
+      const confidence = Math.min(Math.max(mse / threshold, jump / 2.2), 1.0)
       
       // Determine severity
       const severity = this.determineSeverity(confidence, anomalyType)
@@ -362,6 +367,8 @@ export class EdgeAnomalyDetector {
         severity,
         anomalyType,
         affectedSensors,
+        globalThreshold: threshold,
+        sensorThresholds,
         recommendation,
         timestamp: Date.now()
       }
@@ -543,29 +550,27 @@ export class EdgeAnomalyDetector {
     return sum / original.length
   }
 
-  private calculateThreshold(anomalyType?: 'outlier' | 'drift' | 'spike' | 'pattern_break'): number {
-    // Dynamic threshold from reconstruction error distribution
+  private calculateThreshold(): number {
+    // Spike-only mode: keep one dynamic threshold tuned for sudden deviations.
     const errs = this.reconstructionErrorHistory
-    if (errs.length < 30) return 0.1
+    if (errs.length < 30) return 0.07
     const recent = errs.slice(-100)
     const mean = recent.reduce((a, b) => a + b, 0) / recent.length
     const variance = recent.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / recent.length
     const std = Math.sqrt(variance)
-    
-    // Adaptive thresholds for different anomaly types
-    if (anomalyType === 'drift') {
-      // Lower threshold for drift (2.5-sigma) to catch slow changes
-      return mean + 2.5 * std
-    } else if (anomalyType === 'spike') {
-      // Higher threshold for spike (3.5-sigma) to reduce false positives
-      return mean + 3.5 * std
-    } else if (anomalyType === 'outlier') {
-      // Standard threshold for outlier (3-sigma)
-      return mean + 3.0 * std
-    }
-    
-    // Default: 3-sigma threshold
-    return mean + 3 * std
+    return mean + 2.3 * std
+  }
+
+  private getSensorThresholds(): Record<string, number> {
+    const sensorTypes = ['temperature', 'light', 'distance', 'gas', 'gps']
+    const sigmaFactor = 2.3
+
+    const thresholds: Record<string, number> = {}
+    sensorTypes.forEach((sensorType) => {
+      const stats = this.getMeanStd(sensorType)
+      thresholds[sensorType] = stats.mean + sigmaFactor * stats.std
+    })
+    return thresholds
   }
 
   private getLatestWindow(): number[][] {
@@ -589,6 +594,16 @@ export class EdgeAnomalyDetector {
 
   public getCurrentThreshold(): number {
     return this.calculateThreshold()
+  }
+
+  public getSensorThresholdsForDisplay(): Record<string, number> {
+    return this.getSensorThresholds()
+  }
+
+  public resetThresholdState(): void {
+    this.reconstructionErrorHistory = []
+    this.featureHistory = []
+    this.sensorHistory.clear()
   }
 
   /**
@@ -670,112 +685,25 @@ export class EdgeAnomalyDetector {
     return { slope, trend, rSquared, velocity }
   }
 
-  private classifyAnomalyType(features: number[], mse: number): 'outlier' | 'drift' | 'spike' | 'pattern_break' {
-    // features are normalized: [z_temp, std_temp_scaled, z_light, std_light_scaled, z_dist, std_dist_scaled, z_gas, std_gas_scaled, z_gps, std_gps_scaled]
+  private calculateSpikeJump(features: number[], previousFeatures: number[] | null): number {
+    if (!previousFeatures) return 0
+
     const zVals = [features[0], features[2], features[4], features[6], features[8]]
-    const stdScaled = [features[1], features[3], features[5], features[7], features[9]]
+    const prevZ = [
+      previousFeatures[0],
+      previousFeatures[2],
+      previousFeatures[4],
+      previousFeatures[6],
+      previousFeatures[8]
+    ]
 
-    // Spike: large reconstruction error OR sudden jump in z-values compared to previous feature vector
-    let jump = 0
-    if (this.featureHistory.length > 0) {
-      const prev = this.featureHistory[this.featureHistory.length - 1]
-      const prevZ = [prev[0], prev[2], prev[4], prev[6], prev[8]]
-      jump = Math.max(
-        Math.abs(zVals[0] - prevZ[0]),
-        Math.abs(zVals[1] - prevZ[1]),
-        Math.abs(zVals[2] - prevZ[2]),
-        Math.abs(zVals[3] - prevZ[3]),
-        Math.abs(zVals[4] - prevZ[4])
-      )
-    }
-    if (mse > 0.2 || jump > 3.0) return 'spike'
-
-    // Improved Drift Detection: Use trend analysis instead of just std deviation
-    const sensorTypes = ['temperature', 'light', 'distance', 'gas', 'gps']
-    for (const sensorType of sensorTypes) {
-      const trend = this.analyzeTrend(sensorType, 10)
-      const stats = this.getMeanStd(sensorType)
-      
-      // Detect drift: sustained trend with significant slope
-      if (trend.rSquared > 0.4) { // Good fit to linear trend
-        // Calculate slope as percentage of mean (normalized)
-        const meanValue = Math.max(Math.abs(stats.mean), 1) // Avoid division by zero
-        const slopePercent = Math.abs(trend.slope * 60) / meanValue * 100 // Convert to per-minute percentage
-        
-        // Drift detected if:
-        // 1. Significant trend (slope > threshold)
-        // 2. Good R-squared (trend is consistent)
-        // 3. Slope is significant relative to baseline
-        if (slopePercent > 0.5 && trend.rSquared > 0.4) { // >0.5% change per minute
-          // Additional check: sustained deviation from baseline
-          const history = this.sensorHistory.get(sensorType) || []
-          if (history.length >= 20) {
-            const recentValues = history.slice(-20).map(h => h.value)
-            const baselineDeviation = recentValues.map(v => Math.abs(v - stats.mean) / stats.std)
-            const avgDeviation = baselineDeviation.reduce((a, b) => a + b, 0) / baselineDeviation.length
-            
-            // If average deviation is increasing and trend is significant
-            if (avgDeviation > 1.0 && Math.abs(trend.slope) > 0.01) {
-              return 'drift'
-            }
-          }
-        }
-      }
-      
-      // Fallback: traditional std-based drift detection (for backward compatibility)
-      const stdAvg = stdScaled.reduce((a, b) => a + b, 0) / stdScaled.length
-      if (stdAvg > 1.2 || stdScaled.some(s => s > 1.8)) { // Lowered thresholds for better sensitivity
-        // But verify with trend analysis
-        if (trend.rSquared > 0.3) {
-          return 'drift'
-        }
-      }
-    }
-
-    // Outlier: any z is far from mean
-    if (zVals.some(z => Math.abs(z) > 3.0)) return 'outlier'
-
-    // Pattern Break: Check for trend reversal or pattern change
-    // If multiple sensors show inconsistent trends (some increasing, some decreasing)
-    // or if trend suddenly changes direction, it's a pattern break
-    const allSensorTypes = ['temperature', 'light', 'distance', 'gas', 'gps']
-    const trends = allSensorTypes.map(st => this.analyzeTrend(st, 10))
-    const increasingCount = trends.filter(t => t.trend === 'increasing').length
-    const decreasingCount = trends.filter(t => t.trend === 'decreasing').length
-    
-    // Pattern break: if we have conflicting trends across sensors (unusual)
-    // or if a sensor's trend suddenly reversed
-    if (increasingCount > 0 && decreasingCount > 0 && trends.some(t => t.rSquared > 0.4)) {
-      // Multiple sensors showing opposite trends is unusual
-      return 'pattern_break'
-    }
-    
-    // Check for trend reversal in recent history
-    for (const sensorType of allSensorTypes) {
-      const history = this.sensorHistory.get(sensorType) || []
-      if (history.length >= 30) {
-        // Analyze first half vs second half
-        const firstHalf = history.slice(0, Math.floor(history.length / 2))
-        const secondHalf = history.slice(Math.floor(history.length / 2))
-        
-        if (firstHalf.length >= 10 && secondHalf.length >= 10) {
-          const firstTrend = this.analyzeTrendFromData(firstHalf)
-          const secondTrend = this.analyzeTrendFromData(secondHalf)
-          
-          // If trends are opposite (one increasing, one decreasing), it's a pattern break
-          if (
-            (firstTrend.trend === 'increasing' && secondTrend.trend === 'decreasing') ||
-            (firstTrend.trend === 'decreasing' && secondTrend.trend === 'increasing')
-          ) {
-            if (firstTrend.rSquared > 0.3 && secondTrend.rSquared > 0.3) {
-              return 'pattern_break'
-            }
-          }
-        }
-      }
-    }
-
-    return 'pattern_break'
+    return Math.max(
+      Math.abs(zVals[0] - prevZ[0]),
+      Math.abs(zVals[1] - prevZ[1]),
+      Math.abs(zVals[2] - prevZ[2]),
+      Math.abs(zVals[3] - prevZ[3]),
+      Math.abs(zVals[4] - prevZ[4])
+    )
   }
 
   /**
@@ -835,18 +763,18 @@ export class EdgeAnomalyDetector {
   }
 
   private getAffectedSensors(_sensorData: SensorReading[], features: number[]): string[] {
-    // Using normalized z-values: mark sensors whose |z| > 2.5 as affected
+    // Using normalized z-values: mark sensors whose jump looks spike-like.
     const affected: string[] = []
     const zTemp = features[0]
     const zLight = features[2]
     const zDist = features[4]
     const zGas = features[6]
     const zGps = features[8]
-    if (Math.abs(zTemp) > 2.5) affected.push('temperature')
-    if (Math.abs(zLight) > 2.5) affected.push('light')
-    if (Math.abs(zDist) > 2.5) affected.push('distance')
-    if (Math.abs(zGas) > 2.5) affected.push('gas')
-    if (Math.abs(zGps) > 2.5) affected.push('gps')
+    if (Math.abs(zTemp) > 2.0) affected.push('temperature')
+    if (Math.abs(zLight) > 2.0) affected.push('light')
+    if (Math.abs(zDist) > 2.0) affected.push('distance')
+    if (Math.abs(zGas) > 2.0) affected.push('gas')
+    if (Math.abs(zGps) > 2.0) affected.push('gps')
     return affected
   }
 
@@ -856,10 +784,10 @@ export class EdgeAnomalyDetector {
     affectedSensors: string[]
   ): string {
     const recommendations = {
-      outlier: 'Kiểm tra cảm biến có bị lỗi không',
-      drift: 'Cảm biến có thể bị drift, cần hiệu chuẩn',
-      spike: 'Có sự kiện bất thường xảy ra, cần kiểm tra ngay',
-      pattern_break: 'Mô hình dữ liệu thay đổi, cần phân tích thêm'
+      outlier: 'Có sự kiện tăng/giảm đột ngột, cần kiểm tra ngay',
+      drift: 'Có sự kiện tăng/giảm đột ngột, cần kiểm tra ngay',
+      spike: 'Có sự kiện tăng/giảm đột ngột, cần kiểm tra ngay',
+      pattern_break: 'Có sự kiện tăng/giảm đột ngột, cần kiểm tra ngay'
     }
     
     const baseRecommendation = recommendations[anomalyType as keyof typeof recommendations]
@@ -872,21 +800,23 @@ export class EdgeAnomalyDetector {
   }
 
   private fallbackDetection(sensorData: SensorReading[]): AnomalyResult {
-    // Simple statistical fallback when AI model is not available
+    // Simple spike-only fallback when the model is not available
     const values = sensorData.map(d => d.value)
     const mean = values.reduce((sum, val) => sum + val, 0) / values.length
     const stdDev = this.calculateStdDev(values)
     
-    const outliers = values.filter(val => Math.abs(val - mean) > 2 * stdDev)
-    const isAnomaly = outliers.length > 0
+    const spikeValues = values.filter(val => Math.abs(val - mean) > 2 * stdDev)
+    const isAnomaly = spikeValues.length > 0
     
     return {
       isAnomaly,
       confidence: isAnomaly ? 0.7 : 0.1,
       severity: isAnomaly ? 'medium' : 'low',
-      anomalyType: 'outlier',
+      anomalyType: 'spike',
       affectedSensors: sensorData.map(d => d.sensorType),
-      recommendation: isAnomaly ? 'Phát hiện giá trị ngoại lệ bằng phương pháp thống kê' : 'Dữ liệu bình thường',
+      globalThreshold: (mean + 2 * stdDev) || 0,
+      sensorThresholds: this.getSensorThresholds(),
+      recommendation: isAnomaly ? 'Phát hiện biến động đột ngột bằng thống kê' : 'Dữ liệu bình thường',
       timestamp: Date.now()
     }
   }
@@ -945,6 +875,8 @@ export class EdgeAnomalyDetector {
   public dispose() {
     if (this.model) {
       this.model.dispose()
+      this.model = null
     }
+    this.isModelLoaded = false
   }
 }

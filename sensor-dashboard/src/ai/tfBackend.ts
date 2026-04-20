@@ -1,6 +1,6 @@
 import * as tf from '@tensorflow/tfjs'
 
-export async function initTfBackend(prefer: 'wasm' | 'webgl' = 'wasm') {
+export async function initTfBackend(prefer: 'wasm' | 'webgl' = 'webgl') {
   try {
     await tf.setBackend(prefer)
   } catch {

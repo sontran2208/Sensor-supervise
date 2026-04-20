@@ -1,6 +1,8 @@
 import { initializeApp, getApps } from 'firebase/app';
 import type { FirebaseApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import { getDatabase } from 'firebase/database';
+import type { Database } from 'firebase/database';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 
@@ -11,7 +13,8 @@ const firebaseConfig = {
   storageBucket: "sensor-superviser.firebasestorage.app",
   messagingSenderId: "212486679523",
   appId: "1:212486679523:web:ba2a73715aa2c730ceced6",
-  measurementId: "G-9FWJNPN55L"
+  measurementId: "G-9FWJNPN55L",
+  databaseURL: "https://sensor-superviser-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
 
 function hasAllConfig(cfg: Record<string, unknown>): boolean {
@@ -29,6 +32,7 @@ export const firebaseConfigured: boolean = hasAllConfig(firebaseConfig);
 
 let appInstance: FirebaseApp | null = null;
 let dbInstance: Firestore | null = null;
+let rtdbInstance: Database | null = null;
 
 if (firebaseConfigured) {
   function initializeFirebaseApp(): FirebaseApp {
@@ -39,6 +43,7 @@ if (firebaseConfigured) {
   }
   appInstance = initializeFirebaseApp();
   dbInstance = getFirestore(appInstance);
+  rtdbInstance = getDatabase(appInstance);
 
   // Ensure the web app has an authenticated user (anonymous) so Firestore rules with request.auth pass
   const auth = getAuth(appInstance);
@@ -61,10 +66,17 @@ if (firebaseConfigured) {
 
 export const app = appInstance;
 export const db = dbInstance;
+export const rtdb = rtdbInstance;
 
 export type TemperatureRecord = {
   timestamp: number; // milliseconds since epoch
   value: number; // temperature in Celsius
+  humidity?: number; // relative humidity in percent
+};
+
+export type HumidityRecord = {
+  timestamp: number; // milliseconds since epoch
+  value: number; // relative humidity in percent
 };
 
 export type LightRecord = {

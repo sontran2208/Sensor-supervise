@@ -40,9 +40,10 @@ export class SensorManager {
   private labels: Map<string, { label: 'tp' | 'fp' | 'tn' | 'fn'; notedAt: number }> = new Map()
   private lastOptimizationAt: Map<string, number> = new Map()
 
-  constructor(config: SensorManagerConfig) {
+  /** Shared `detector` must be the same instance as `EdgeAISystem.detector` so status/training match inference. */
+  constructor(config: SensorManagerConfig, detector?: EdgeAnomalyDetector) {
     this.config = config
-    this.detector = new EdgeAnomalyDetector()
+    this.detector = detector ?? new EdgeAnomalyDetector()
     this.initializeSensorTypes()
   }
 
@@ -160,7 +161,7 @@ export class SensorManager {
       severity: anomalyResult.severity,
       message: anomalyResult.recommendation,
       value: reading.value,
-      threshold: this.getThresholdForSensor(reading.sensorType),
+      threshold: anomalyResult.sensorThresholds?.[reading.sensorType] ?? this.getThresholdForSensor(reading.sensorType),
       recommendation: anomalyResult.recommendation,
       acknowledged: false
     }

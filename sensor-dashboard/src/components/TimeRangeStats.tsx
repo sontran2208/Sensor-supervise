@@ -2,6 +2,7 @@ import { useState } from 'react';
 import dayjs from 'dayjs';
 import DateRangePicker from './DateRangePicker';
 import { motion } from 'framer-motion';
+import { HiChartBar, HiArrowUp, HiArrowDown, HiArrowRight } from 'react-icons/hi';
 
 type TimeRange = {
   label: string;
@@ -25,7 +26,7 @@ type Props = {
   unitLabel?: string; // e.g., '°C' or 'lx'
   onDateRangeChange?: (startDate: Date, endDate: Date) => void;
   onClearDateRange?: () => void;
-  sensorType?: 'temperature' | 'light' | 'distance' | 'gas' | 'gps';
+  sensorType?: 'temperature' | 'humidity' | 'light' | 'distance' | 'gas' | 'gps';
 };
 
 export function TimeRangeStats({ data, selectedTimeRange = 30, onTimeRangeChange, unitLabel = '°C', onDateRangeChange, onClearDateRange }: Props) {
@@ -102,7 +103,10 @@ export function TimeRangeStats({ data, selectedTimeRange = 30, onTimeRangeChange
       transition={{ duration: 0.5 }}
     >
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-gray-800">📊 Thống kê theo khoảng thời gian</h3>
+        <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+          <HiChartBar className="text-blue-600" />
+          Thống kê theo khoảng thời gian
+        </h3>
       </div>
 
       {/* Time Range Selector */}
@@ -110,7 +114,7 @@ export function TimeRangeStats({ data, selectedTimeRange = 30, onTimeRangeChange
         <div className="flex items-center gap-2 mb-3">
           <button
             onClick={() => setMode('preset')}
-            className={`px-4 py-2.5 rounded-lg text-sm font-semibold border transition-all duration-200 ${
+            className={`px-4 py-2.5 rounded-lg text-sm font-semibold border transition-all duration-200 outline-none focus:outline-none focus:ring-0 ${
               mode === 'preset' 
                 ? 'bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 text-white border-transparent shadow-lg transform scale-105' 
                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:shadow-md'
@@ -120,7 +124,7 @@ export function TimeRangeStats({ data, selectedTimeRange = 30, onTimeRangeChange
           </button>
           <button
             onClick={() => setMode('custom')}
-            className={`px-4 py-2.5 rounded-lg text-sm font-semibold border transition-all duration-200 ${
+            className={`px-4 py-2.5 rounded-lg text-sm font-semibold border transition-all duration-200 outline-none focus:outline-none focus:ring-0 ${
               mode === 'custom' 
                 ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 text-white border-transparent shadow-lg transform scale-105' 
                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:shadow-md'
@@ -131,7 +135,7 @@ export function TimeRangeStats({ data, selectedTimeRange = 30, onTimeRangeChange
           {mode === 'custom' && onClearDateRange && (
             <button
               onClick={() => onClearDateRange()}
-              className="ml-auto px-3 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50"
+              className="ml-auto px-3 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 outline-none focus:outline-none focus:ring-0"
             >
               Xoá chọn
             </button>
@@ -145,7 +149,7 @@ export function TimeRangeStats({ data, selectedTimeRange = 30, onTimeRangeChange
                 <button
                   key={range.minutes}
                   onClick={() => onTimeRangeChange?.(range.minutes)}
-                  className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all duration-200 ${
+                  className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all duration-200 outline-none focus:outline-none focus:ring-0 ${
                     selectedTimeRange === range.minutes 
                       ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white border-transparent shadow-lg transform scale-105' 
                       : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:shadow-md'
@@ -272,14 +276,30 @@ export function TimeRangeStats({ data, selectedTimeRange = 30, onTimeRangeChange
               stats.trend === 'increasing' ? 'text-green-600' : 
               stats.trend === 'decreasing' ? 'text-red-600' : 'text-gray-600'
             }`}>
-              {stats.trend === 'increasing' ? '↗️ Tăng' : 
-               stats.trend === 'decreasing' ? '↘️ Giảm' : '➡️ Ổn định'}
+              <span className="flex items-center justify-center gap-1">
+                {stats.trend === 'increasing' ? (
+                  <>
+                    <HiArrowUp className="w-4 h-4" />
+                    Tăng
+                  </>
+                ) : stats.trend === 'decreasing' ? (
+                  <>
+                    <HiArrowDown className="w-4 h-4" />
+                    Giảm
+                  </>
+                ) : (
+                  <>
+                    <HiArrowRight className="w-4 h-4" />
+                    Ổn định
+                  </>
+                )}
+              </span>
             </div>
           </motion.div>
         </div>
       ) : (
         <div className="text-center p-10 text-gray-500 border border-dashed border-gray-300 rounded-lg mb-6">
-          <div className="text-5xl mb-4">📊</div>
+          <HiChartBar className="text-5xl mx-auto mb-4 text-gray-400" />
           <div className="text-lg font-bold mb-2">Không có dữ liệu</div>
           <div className="text-sm">
             Không có dữ liệu trong khoảng thời gian đã chọn

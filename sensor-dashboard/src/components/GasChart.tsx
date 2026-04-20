@@ -30,38 +30,10 @@ export default function GasChart({ data }: Props) {
     labels: data.map(d => new Date(d.timestamp).toLocaleTimeString()),
     datasets: [
       {
-        label: 'CO (ppm)',
-        data: data.map(d => d.co),
+        label: 'MQ-2 Raw Value',
+        data: data.map(d => d.mq2_raw),
         borderColor: 'rgb(255, 99, 132)',
         backgroundColor: 'rgba(255, 99, 132, 0.2)',
-        tension: 0.1,
-      },
-      {
-        label: 'CO2 (ppm)',
-        data: data.map(d => d.co2),
-        borderColor: 'rgb(54, 162, 235)',
-        backgroundColor: 'rgba(54, 162, 235, 0.2)',
-        tension: 0.1,
-      },
-      {
-        label: 'Smoke',
-        data: data.map(d => d.smoke),
-        borderColor: 'rgb(255, 205, 86)',
-        backgroundColor: 'rgba(255, 205, 86, 0.2)',
-        tension: 0.1,
-      },
-      {
-        label: 'LPG',
-        data: data.map(d => d.lpg),
-        borderColor: 'rgb(75, 192, 192)',
-        backgroundColor: 'rgba(75, 192, 192, 0.2)',
-        tension: 0.1,
-      },
-      {
-        label: 'Air Quality Index',
-        data: data.map(d => d.airQuality),
-        borderColor: 'rgb(153, 102, 255)',
-        backgroundColor: 'rgba(153, 102, 255, 0.2)',
         tension: 0.1,
       },
     ],
@@ -76,7 +48,7 @@ export default function GasChart({ data }: Props) {
       },
       title: {
         display: true,
-        text: 'Gas Sensor Readings Over Time',
+        text: 'MQ-2 Gas Sensor Readings Over Time',
       },
     },
     scales: {
@@ -84,7 +56,7 @@ export default function GasChart({ data }: Props) {
         beginAtZero: true,
         title: {
           display: true,
-          text: 'Concentration (ppm)',
+          text: 'Raw ADC Value (0-4095)',
         },
       },
     },
