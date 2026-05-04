@@ -29,6 +29,7 @@ export function useEdgeAI() {
   const [systemStatus, setSystemStatus] = useState<any>(null)
   const [alerts, setAlerts] = useState<any[]>([])
   const [optimizations, setOptimizations] = useState<Map<string, any>>(new Map())
+  const [workerError, setWorkerError] = useState<string | null>(null)
 
   useEffect(() => {
     const workerInstance = ensureSharedWorker()
@@ -48,8 +49,11 @@ export function useEdgeAI() {
       const msg = e.data
       if (msg.type === 'ready') {
         setIsRunning(true)
+        setWorkerError(null)
+        workerInstance.postMessage({ type: 'getStatus' })
       } else if (msg.type === 'status') {
         setSystemStatus(msg.payload)
+        setWorkerError(null)
         if (msg.payload && Array.isArray(msg.payload.alerts)) {
           setAlerts(msg.payload.alerts)
         }
@@ -68,6 +72,8 @@ export function useEdgeAI() {
             return next
           })
         }
+      } else if (msg.type === 'error') {
+        setWorkerError(String(msg.message || 'Edge AI worker failed to initialize'))
       }
     }
 
@@ -201,6 +207,7 @@ export function useEdgeAI() {
     system: null,
     isRunning,
     systemStatus,
+    workerError,
     alerts,
     optimizations,
     processSensorData,

@@ -154,6 +154,7 @@ self.onmessage = async (e: MessageEvent) => {
         break
       }
       case 'getStatus': {
+        await ensureStarted()
         const status = system.getSystemStatus()
         const alerts = system.getActiveAlerts()
         ;(self as any).postMessage({ type: 'status', payload: { ...status, alerts } })

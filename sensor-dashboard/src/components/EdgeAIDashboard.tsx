@@ -141,6 +141,7 @@ function FlowStep({ step, title, description, icon, status, details, color, metr
 export default function EdgeAIDashboard({ className = '' }: EdgeAIDashboardProps) {
   const { 
     systemStatus, 
+    workerError,
     alerts, 
     optimizations, 
     acknowledgeAlert,
@@ -325,6 +326,30 @@ export default function EdgeAIDashboard({ className = '' }: EdgeAIDashboardProps
 
       {/* Content */}
       <div className="p-6">
+        {!systemStatus && (
+          <div className={`rounded-lg border px-4 py-6 text-sm ${
+            workerError
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : 'border-blue-200 bg-blue-50 text-blue-700'
+          }`}>
+            <div className="flex items-start gap-3">
+              <HiInformationCircle className={`mt-0.5 h-5 w-5 flex-shrink-0 ${
+                workerError ? 'text-red-500' : 'text-blue-500'
+              }`} />
+              <div>
+                <div className="font-semibold">
+                  {workerError ? 'Edge AI chua san sang' : 'Dang khoi tao Edge AI'}
+                </div>
+                <div className="mt-1 text-xs sm:text-sm">
+                  {workerError
+                    ? `Worker khong tra ve trang thai: ${workerError}`
+                    : 'He thong dang tai mo hinh/worker hoac dang cho du lieu cam bien moi de cap nhat trang thai.'}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'status' && systemStatus && (
           <div className="space-y-6">
             {/* System Overview */}
