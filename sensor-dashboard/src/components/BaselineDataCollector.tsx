@@ -8,7 +8,7 @@ import { useEdgeAI } from '../hooks/useEdgeAI'
 import { loadBaselineFromFile, saveBaselineToIndexedDB, loadBaselineFromIndexedDB } from '../utils/baselineLoader'
 import type { SensorReading } from '../ai/EdgeAnomalyDetector'
 import toast from 'react-hot-toast'
-import { HiChartBar, HiFolder, HiRefresh } from 'react-icons/hi'
+import { HiChartBar, HiFolder, HiRefresh, HiCheckCircle, HiDatabase, HiSparkles } from 'react-icons/hi'
 import { FaHourglassHalf, FaRocket } from 'react-icons/fa'
 
 export default function BaselineDataCollector() {
@@ -25,6 +25,15 @@ export default function BaselineDataCollector() {
   const { data: distanceData = [] } = useDistance(1000, 60)
   const { data: gpsData = [] } = useGps(1000)
   const { data: gasData = [] } = useGas(1000)
+  const sourceStats = [
+    { key: 'temperature', label: 'Nhiệt độ', count: tempData.length, accent: 'text-rose-600 bg-rose-50 border-rose-200' },
+    { key: 'light', label: 'Ánh sáng', count: lightData.length, accent: 'text-amber-700 bg-amber-50 border-amber-200' },
+    { key: 'distance', label: 'Khoảng cách', count: distanceData.length, accent: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+    { key: 'gps', label: 'GPS', count: gpsData.length, accent: 'text-sky-700 bg-sky-50 border-sky-200' },
+    { key: 'gas', label: 'Khí gas', count: gasData.length, accent: 'text-fuchsia-700 bg-fuchsia-50 border-fuchsia-200' }
+  ]
+  const totalSourceReadings = sourceStats.reduce((sum, item) => sum + item.count, 0)
+  const availableSources = sourceStats.filter(item => item.count > 0).length
 
   const collectBaseline = async () => {
     setCollecting(true)
@@ -58,7 +67,7 @@ export default function BaselineDataCollector() {
       
       gpsData.forEach(d => {
         // Convert GPS speed from m/s to km/h for consistency
-        const speedKmh = d.speed * 3.6
+        const speedKmh = (d.speed ?? 0) * 3.6
         readings.push({
           timestamp: d.timestamp,
           value: speedKmh,
@@ -204,116 +213,237 @@ export default function BaselineDataCollector() {
   }
 
   return (
-    <div className="p-4 bg-white rounded-lg shadow-md">
-      <h3 className="text-lg font-semibold mb-4">Baseline Data Collector</h3>
-      <p className="text-sm text-gray-600 mb-4">
-        Collect baseline data từ dữ liệu hiện tại (60 phút gần nhất) hoặc load từ file để train model.
-      </p>
-
-      {baselineInfo && (
-        <div className="mb-4 p-2 bg-blue-50 rounded text-sm">
-          <strong>Baseline đã load:</strong> {baselineInfo.count} readings
-          {baselineInfo.savedAt && (
-            <span className="text-gray-500 ml-2">
-              ({new Date(baselineInfo.savedAt).toLocaleString()})
-            </span>
-          )}
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-50 shadow-lg">
+      <div className="border-b border-slate-200 bg-white/80 px-5 py-4 backdrop-blur">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 text-white shadow-md">
+                <HiDatabase className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800">Baseline Data Collector</h3>
+                <p className="text-sm text-slate-600">
+                  Thu thập hoặc nạp baseline để huấn luyện mô hình bằng dữ liệu thực.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+            Quy trình 3 bước
+          </div>
         </div>
-      )}
-
-      <div className="space-y-2">
-        <button
-          onClick={collectBaseline}
-          disabled={collecting}
-          className={`w-full px-4 py-3 rounded-lg font-semibold text-white transition-all duration-200 ${
-            collecting 
-              ? 'bg-gradient-to-r from-gray-400 to-gray-500 cursor-not-allowed opacity-60' 
-              : 'bg-gradient-to-r from-blue-500 via-cyan-500 to-teal-500 hover:from-blue-600 hover:via-cyan-600 hover:to-teal-600 shadow-lg hover:shadow-xl transform hover:scale-[1.02]'
-          }`}
-        >
-          <span className="flex items-center justify-center gap-2">
-            {collecting ? (
-              <>
-                <FaHourglassHalf className="w-4 h-4 animate-spin" />
-                Đang collect...
-              </>
-            ) : (
-              <>
-                <HiChartBar className="w-4 h-4" />
-                Collect Baseline (60 phút gần nhất)
-              </>
-            )}
-          </span>
-        </button>
-
-        <div className="flex gap-2">
-          <label className={`flex-1 px-4 py-3 rounded-lg font-semibold text-center cursor-pointer transition-all duration-200 ${
-            loadingBaseline
-              ? 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-600 cursor-not-allowed opacity-60'
-              : 'bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white hover:from-indigo-600 hover:via-purple-600 hover:to-pink-600 shadow-md hover:shadow-lg transform hover:scale-[1.02]'
-          }`}>
-            <span className="flex items-center justify-center gap-2">
-              <HiFolder className="w-4 h-4" />
-              Load từ File
-            </span>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              onChange={handleFileLoad}
-              className="hidden"
-              disabled={loadingBaseline}
-            />
-          </label>
-          <button
-            onClick={loadFromIndexedDB}
-            disabled={loadingBaseline}
-            className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all duration-200 ${
-              loadingBaseline
-                ? 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-600 cursor-not-allowed opacity-60'
-                : 'bg-gradient-to-r from-violet-500 via-fuchsia-500 to-rose-500 text-white hover:from-violet-600 hover:via-fuchsia-600 hover:to-rose-600 shadow-md hover:shadow-lg transform hover:scale-[1.02]'
-            }`}
-          >
-            <span className="flex items-center justify-center gap-2">
-              <HiRefresh className="w-4 h-4" />
-              Load từ IndexedDB
-            </span>
-          </button>
-        </div>
-
-        <button
-          onClick={trainFromBaselineData}
-          disabled={training || !baselineInfo}
-          className={`w-full px-4 py-3 rounded-lg font-semibold text-white transition-all duration-200 ${
-            training || !baselineInfo
-              ? 'bg-gradient-to-r from-gray-400 to-gray-500 cursor-not-allowed opacity-60'
-              : 'bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 hover:from-green-600 hover:via-emerald-600 hover:to-teal-600 shadow-lg hover:shadow-xl transform hover:scale-[1.02]'
-          }`}
-        >
-          <span className="flex items-center justify-center gap-2">
-            {training ? (
-              <>
-                <FaHourglassHalf className="w-4 h-4 animate-spin" />
-                Đang train...
-              </>
-            ) : (
-              <>
-                <FaRocket className="w-4 h-4" />
-                Train Model từ Baseline
-              </>
-            )}
-          </span>
-        </button>
       </div>
 
-      <div className="mt-4 text-xs text-gray-500">
-        <p><strong>Workflow:</strong></p>
-        <ol className="list-decimal list-inside space-y-1 mt-1">
-          <li>Collect baseline từ dữ liệu hiện tại (môi trường dev)</li>
-          <li>Export file JSON để lưu trữ</li>
-          <li>Trên môi trường production: Load file và Train model</li>
-          <li>Model sẽ dùng baseline này thay vì synthetic data</li>
-        </ol>
+      <div className="p-5">
+        <div className="mb-5 grid gap-3 md:grid-cols-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Nguồn dữ liệu sẵn sàng</div>
+            <div className="mt-2 text-2xl font-bold text-slate-800">{availableSources}/5</div>
+            <div className="mt-1 text-sm text-slate-500">Cảm biến đang có dữ liệu để tạo baseline</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Tổng mẫu hiện có</div>
+            <div className="mt-2 text-2xl font-bold text-slate-800">{totalSourceReadings}</div>
+            <div className="mt-1 text-sm text-slate-500">Lấy từ các hook dữ liệu gần nhất của dashboard</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Trạng thái baseline</div>
+            <div className="mt-2 text-sm font-semibold text-slate-800">
+              {baselineInfo ? `${baselineInfo.count} readings đã sẵn sàng` : 'Chưa có baseline được nạp'}
+            </div>
+            <div className="mt-1 text-sm text-slate-500">
+              {baselineInfo?.savedAt ? new Date(baselineInfo.savedAt).toLocaleString() : 'Hãy collect hoặc load trước khi train'}
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-5 flex flex-wrap gap-2">
+          {sourceStats.map((item) => (
+            <span
+              key={item.key}
+              className={`rounded-full border px-3 py-1 text-xs font-medium ${item.accent}`}
+            >
+              {item.label}: {item.count}
+            </span>
+          ))}
+        </div>
+
+        {baselineInfo && (
+          <div className="mb-5 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <HiCheckCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+            <div>
+              <div className="font-semibold">Baseline đã sẵn sàng để train</div>
+              <div>
+                Đã lưu <span className="font-semibold">{baselineInfo.count}</span> readings
+                {baselineInfo.savedAt ? ` lúc ${new Date(baselineInfo.savedAt).toLocaleString()}` : ''}.
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-500 via-sky-500 to-blue-600 p-5 text-white shadow-lg">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">Bước 1</div>
+                <h4 className="mt-2 text-xl font-semibold">Thu thập baseline từ dữ liệu hiện tại</h4>
+                <p className="mt-2 text-sm text-cyan-50/90">
+                  Tự động gom dữ liệu 60 phút gần nhất, lưu vào IndexedDB và xuất file JSON để mang sang môi trường khác.
+                </p>
+              </div>
+              <div className="rounded-xl bg-white/15 p-3">
+                <HiChartBar className="h-6 w-6" />
+              </div>
+            </div>
+
+            <button
+              onClick={collectBaseline}
+              disabled={collecting}
+              className="mt-5 w-full appearance-none rounded-xl border border-white/30 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-white/10 disabled:translate-y-0"
+              style={{
+                background: collecting ? 'rgba(148, 163, 184, 0.45)' : 'rgba(255, 255, 255, 0.12)',
+                cursor: collecting ? 'not-allowed' : 'pointer',
+                WebkitTextFillColor: '#ffffff'
+              }}
+            >
+              <span className="flex items-center justify-center gap-2">
+                {collecting ? (
+                  <>
+                    <FaHourglassHalf className="h-4 w-4 animate-spin" />
+                    Đang thu thập baseline...
+                  </>
+                ) : (
+                  <>
+                    <HiChartBar className="h-4 w-4" />
+                    Collect baseline (60 phút gần nhất)
+                  </>
+                )}
+              </span>
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-violet-200 bg-white p-4 shadow-sm">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-600">Bước 2</div>
+                  <h4 className="mt-1 text-base font-semibold text-slate-800">Nạp baseline có sẵn</h4>
+                  <p className="mt-1 text-sm text-slate-500">Chọn file JSON hoặc khôi phục bản lưu gần nhất từ IndexedDB.</p>
+                </div>
+                <div className="rounded-xl bg-violet-50 p-2 text-violet-600">
+                  <HiFolder className="h-5 w-5" />
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label
+                  className="group flex cursor-pointer flex-col justify-between rounded-xl border border-violet-200 bg-violet-50 p-4 transition hover:border-violet-300 hover:bg-violet-100"
+                  style={{
+                    opacity: loadingBaseline ? 0.65 : 1,
+                    cursor: loadingBaseline ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  <div className="flex items-center gap-2 text-sm font-semibold text-violet-700">
+                    <HiFolder className="h-4 w-4" />
+                    Load từ file
+                  </div>
+                  <div className="mt-2 text-xs text-violet-600">Import baseline JSON từ máy của bạn</div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={handleFileLoad}
+                    className="hidden"
+                    disabled={loadingBaseline}
+                  />
+                </label>
+
+                <button
+                  onClick={loadFromIndexedDB}
+                  disabled={loadingBaseline}
+                  className="appearance-none rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-4 text-left transition hover:border-fuchsia-300 hover:bg-fuchsia-100"
+                  style={{
+                    opacity: loadingBaseline ? 0.65 : 1,
+                    cursor: loadingBaseline ? 'not-allowed' : 'pointer',
+                    WebkitTextFillColor: '#86198f'
+                  }}
+                >
+                  <div className="flex items-center gap-2 text-sm font-semibold text-fuchsia-700">
+                    <HiRefresh className={`h-4 w-4 ${loadingBaseline ? 'animate-spin' : ''}`} />
+                    Load từ IndexedDB
+                  </div>
+                  <div className="mt-2 text-xs text-fuchsia-600">Dùng baseline đã lưu trong trình duyệt</div>
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-500 to-teal-600 p-4 text-white shadow-md">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-100">Bước 3</div>
+                  <h4 className="mt-1 text-base font-semibold">Huấn luyện mô hình từ baseline</h4>
+                  <p className="mt-1 text-sm text-emerald-50/90">
+                    Chỉ khả dụng khi đã có baseline trong bộ nhớ hoặc vừa được load xong.
+                  </p>
+                </div>
+                <div className="rounded-xl bg-white/15 p-2">
+                  <HiSparkles className="h-5 w-5" />
+                </div>
+              </div>
+
+              <button
+                onClick={trainFromBaselineData}
+                disabled={training || !baselineInfo}
+                className="mt-4 w-full appearance-none rounded-xl border border-white/25 px-4 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:translate-y-0"
+                style={{
+                  background: training || !baselineInfo ? 'rgba(148, 163, 184, 0.38)' : 'rgba(255, 255, 255, 0.12)',
+                  cursor: training || !baselineInfo ? 'not-allowed' : 'pointer',
+                  WebkitTextFillColor: '#ffffff'
+                }}
+              >
+                <span className="flex items-center justify-center gap-2">
+                  {training ? (
+                    <>
+                      <FaHourglassHalf className="h-4 w-4 animate-spin" />
+                      Đang train model...
+                    </>
+                  ) : (
+                    <>
+                      <FaRocket className="h-4 w-4" />
+                      Train model từ baseline
+                    </>
+                  )}
+                </span>
+              </button>
+
+              {!baselineInfo && (
+                <div className="mt-3 text-xs text-emerald-50/80">
+                  Hãy hoàn thành bước 1 hoặc bước 2 trước khi train.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 text-sm font-semibold text-slate-800">Workflow đề xuất</div>
+          <div className="grid gap-3 md:grid-cols-4">
+            {[
+              '1. Thu thập baseline từ dữ liệu hiện tại ở môi trường dev',
+              '2. Xuất file JSON để lưu trữ hoặc chia sẻ giữa các môi trường',
+              '3. Trên production, load file hoặc IndexedDB để khôi phục baseline',
+              '4. Train mô hình để dùng baseline thật thay cho synthetic data'
+            ].map((step, index) => (
+              <div key={step} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-600">
+                <div className="mb-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-800 text-[11px] font-semibold text-white">
+                  {index + 1}
+                </div>
+                <div>{step}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   )

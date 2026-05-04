@@ -42,18 +42,32 @@ export default function DateRangePicker({ onApply, onClear }: Props) {
       </div>
       <div className="mt-3 sm:mt-4 flex items-center gap-2">
         <button
-          className={`px-4 py-2 rounded-md text-sm font-medium text-white transition-colors ${
-            canApply ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-300 cursor-not-allowed"
+          className={`appearance-none px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            canApply ? "hover:bg-blue-700" : ""
           }`}
           onClick={handleApply}
           disabled={!canApply}
+          style={{
+            backgroundColor: canApply ? "#2563eb" : "#e5e7eb",
+            color: canApply ? "#ffffff" : "#9ca3af",
+            border: `1px solid ${canApply ? "#2563eb" : "#e5e7eb"}`,
+            WebkitTextFillColor: canApply ? "#ffffff" : "#9ca3af",
+            cursor: canApply ? "pointer" : "not-allowed",
+            boxShadow: "none",
+          }}
         >
           Áp dụng
         </button>
         {onClear && (
           <button
-            className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50"
+            className="appearance-none px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50"
             onClick={onClear}
+            style={{
+              backgroundColor: "#ffffff",
+              color: "#374151",
+              WebkitTextFillColor: "#374151",
+              boxShadow: "none",
+            }}
           >
             Xoá chọn
           </button>

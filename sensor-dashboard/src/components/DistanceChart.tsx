@@ -1,5 +1,25 @@
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
+import { Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
 import dayjs from 'dayjs';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 export type DistanceDoc = { id: string; timestamp: number; value: number };
 
@@ -9,26 +29,58 @@ type Props = {
 };
 
 export function DistanceChart({ data, highlightTimestamp }: Props) {
-  const chartData = data.map((d) => ({
-    t: dayjs(d.timestamp).format('HH:mm:ss'),
-    value: d.value,
-    ts: d.timestamp,
-  }));
+  const highlightIndex = highlightTimestamp
+    ? data.findIndex((d) => d.timestamp === highlightTimestamp)
+    : -1;
 
-  const hl = highlightTimestamp ? dayjs(highlightTimestamp).format('HH:mm:ss') : undefined;
+  const chartData = {
+    labels: data.map((d) => dayjs(d.timestamp).format('HH:mm:ss')),
+    datasets: [
+      {
+        label: 'Distance',
+        data: data.map((d) => d.value),
+        borderColor: 'rgb(34, 197, 94)',
+        backgroundColor: 'rgba(34, 197, 94, 0.2)',
+        borderWidth: 2,
+        tension: 0.25,
+        pointRadius: data.map((_, index) => (index === highlightIndex ? 5 : 0)),
+        pointHoverRadius: data.map((_, index) => (index === highlightIndex ? 6 : 3)),
+        pointBackgroundColor: data.map((_, index) => (index === highlightIndex ? '#15803d' : '#22c55e')),
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top' as const,
+      },
+      title: {
+        display: true,
+        text: 'Distance Sensor Readings Over Time',
+      },
+      tooltip: {
+        callbacks: {
+          label: (context: any) => `${context.dataset.label}: ${Number(context.parsed.y).toFixed(1)} cm`,
+          title: (items: any[]) => `Thời gian ${items[0]?.label ?? ''}`,
+        },
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: false,
+        ticks: {
+          callback: (value: number | string) => `${value} cm`,
+        },
+      },
+    },
+  };
 
   return (
     <div className="w-full h-full">
-      <ResponsiveContainer>
-        <LineChart data={chartData} margin={{ left: 8, right: 16, top: 10, bottom: 10 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#3a3a3a" />
-          <XAxis dataKey="t" tick={{ fontSize: 12 }} />
-          <YAxis tick={{ fontSize: 12 }} domain={['auto', 'auto']} unit=" cm" />
-          <Tooltip formatter={(value: number) => `${value.toFixed(1)} cm`} labelFormatter={(l) => `Thời gian ${l}`} />
-          <Line type="monotone" dataKey="value" stroke="#22c55e" strokeWidth={2} dot={false} isAnimationActive={false} />
-          {hl && <ReferenceLine x={hl} stroke="#ef4444" strokeDasharray="4 2" />}
-        </LineChart>
-      </ResponsiveContainer>
+      <Line data={chartData} options={options} />
     </div>
   );
 }

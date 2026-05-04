@@ -1,5 +1,25 @@
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
+import { Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
 import dayjs from 'dayjs';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 export type LightDoc = { id: string; timestamp: number; value: number };
 
@@ -9,26 +29,58 @@ type Props = {
 };
 
 export function LightChart({ data, highlightTimestamp }: Props) {
-  const chartData = data.map((d) => ({
-    t: dayjs(d.timestamp).format('HH:mm:ss'),
-    value: d.value,
-    ts: d.timestamp,
-  }));
+  const highlightIndex = highlightTimestamp
+    ? data.findIndex((d) => d.timestamp === highlightTimestamp)
+    : -1;
 
-  const hl = highlightTimestamp ? dayjs(highlightTimestamp).format('HH:mm:ss') : undefined;
+  const chartData = {
+    labels: data.map((d) => dayjs(d.timestamp).format('HH:mm:ss')),
+    datasets: [
+      {
+        label: 'Light Intensity',
+        data: data.map((d) => d.value),
+        borderColor: 'rgb(245, 158, 11)',
+        backgroundColor: 'rgba(245, 158, 11, 0.2)',
+        borderWidth: 2,
+        tension: 0.25,
+        pointRadius: data.map((_, index) => (index === highlightIndex ? 5 : 0)),
+        pointHoverRadius: data.map((_, index) => (index === highlightIndex ? 6 : 3)),
+        pointBackgroundColor: data.map((_, index) => (index === highlightIndex ? '#b45309' : '#f59e0b')),
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top' as const,
+      },
+      title: {
+        display: true,
+        text: 'Light Sensor Readings Over Time',
+      },
+      tooltip: {
+        callbacks: {
+          label: (context: any) => `${context.dataset.label}: ${Number(context.parsed.y).toFixed(0)} lx`,
+          title: (items: any[]) => `Thời gian ${items[0]?.label ?? ''}`,
+        },
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: false,
+        ticks: {
+          callback: (value: number | string) => `${value} lx`,
+        },
+      },
+    },
+  };
 
   return (
     <div className="w-full h-full">
-      <ResponsiveContainer>
-        <LineChart data={chartData} margin={{ left: 8, right: 16, top: 10, bottom: 10 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#3a3a3a" />
-          <XAxis dataKey="t" tick={{ fontSize: 12 }} />
-          <YAxis tick={{ fontSize: 12 }} domain={['auto', 'auto']} unit=" lx" />
-          <Tooltip formatter={(value: number) => `${value.toFixed(0)} lx`} labelFormatter={(l) => `Thời gian ${l}`} />
-          <Line type="monotone" dataKey="value" stroke="#f59e0b" strokeWidth={2} dot={false} isAnimationActive={false} />
-          {hl && <ReferenceLine x={hl} stroke="#ef4444" strokeDasharray="4 2" />}
-        </LineChart>
-      </ResponsiveContainer>
+      <Line data={chartData} options={options} />
     </div>
   );
 }

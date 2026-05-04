@@ -2,10 +2,10 @@ import { useState, useMemo } from 'react'
 import { useEdgeAI } from '../hooks/useEdgeAI'
 import { 
   HiChartBar, HiRefresh, HiExclamationCircle, HiCog, HiDocumentText,
-  HiChip, HiSearch, HiTag, HiBell, HiAdjustments,
+  HiSearch, HiTag, HiBell, HiAdjustments,
   HiCheckCircle, HiXCircle, HiInformationCircle
 } from 'react-icons/hi'
-import { FaRobot, FaSignal, FaFlask, FaClock } from 'react-icons/fa'
+import { FaRobot, FaSignal, FaFlask } from 'react-icons/fa'
 
 interface EdgeAIDashboardProps {
   className?: string
@@ -587,11 +587,17 @@ export default function EdgeAIDashboard({ className = '' }: EdgeAIDashboardProps
                   <button
                     onClick={handleResetThreshold}
                     disabled={isResettingThreshold}
-                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                      isResettingThreshold
-                        ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
-                        : 'bg-orange-600 text-white hover:bg-orange-700'
+                    className={`appearance-none px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                      isResettingThreshold ? '' : 'hover:bg-orange-700'
                     }`}
+                    style={{
+                      backgroundColor: isResettingThreshold ? '#e5e7eb' : '#ea580c',
+                      color: isResettingThreshold ? '#6b7280' : '#ffffff',
+                      border: `1px solid ${isResettingThreshold ? '#d1d5db' : '#ea580c'}`,
+                      WebkitTextFillColor: isResettingThreshold ? '#6b7280' : '#ffffff',
+                      cursor: isResettingThreshold ? 'not-allowed' : 'pointer',
+                      boxShadow: isResettingThreshold ? 'none' : undefined,
+                    }}
                   >
                     {isResettingThreshold ? 'Dang reset...' : 'Reset Threshold'}
                   </button>

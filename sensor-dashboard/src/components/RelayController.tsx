@@ -13,6 +13,8 @@ export default function RelayController() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isOnActive = state === "ON";
+  const isOffActive = state === "OFF";
 
   useEffect(() => {
     if (!firebaseConfigured || !rtdb) {
@@ -94,25 +96,41 @@ export default function RelayController() {
       <div className="grid grid-cols-2 gap-3">
         <button
           type="button"
-          disabled={loading || updating || state === "ON" || !!error}
+          disabled={loading || updating || isOnActive || !!error}
           onClick={() => handleSetRelay("ON")}
-          className={`rounded-lg px-4 py-3 font-semibold transition-all ${
-            state === "ON"
-              ? "bg-green-600 text-white shadow-lg"
-              : "bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 disabled:opacity-50"
-          }`}
+          className={`appearance-none rounded-lg border px-4 py-3 font-semibold transition-all ${
+            isOnActive
+              ? "shadow-lg"
+              : "hover:bg-green-100"
+          } ${loading || updating || !!error ? "disabled:cursor-not-allowed" : ""}`}
+          style={{
+            backgroundColor: isOnActive ? "#16a34a" : "#f0fdf4",
+            color: isOnActive ? "#ffffff" : "#15803d",
+            borderColor: isOnActive ? "#16a34a" : "#bbf7d0",
+            opacity: isOnActive ? 1 : undefined,
+            WebkitTextFillColor: isOnActive ? "#ffffff" : "#15803d",
+            cursor: loading || updating || isOnActive || !!error ? "default" : "pointer",
+          }}
         >
           Bật (ON)
         </button>
         <button
           type="button"
-          disabled={loading || updating || state === "OFF" || !!error}
+          disabled={loading || updating || isOffActive || !!error}
           onClick={() => handleSetRelay("OFF")}
-          className={`rounded-lg px-4 py-3 font-semibold transition-all ${
-            state === "OFF"
-              ? "bg-gray-700 text-white shadow-lg"
-              : "bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 disabled:opacity-50"
-          }`}
+          className={`appearance-none rounded-lg border px-4 py-3 font-semibold transition-all ${
+            isOffActive
+              ? "shadow-lg"
+              : "hover:bg-gray-100"
+          } ${loading || updating || !!error ? "disabled:cursor-not-allowed" : ""}`}
+          style={{
+            backgroundColor: isOffActive ? "#374151" : "#f9fafb",
+            color: isOffActive ? "#ffffff" : "#374151",
+            borderColor: isOffActive ? "#374151" : "#e5e7eb",
+            opacity: isOffActive ? 1 : undefined,
+            WebkitTextFillColor: isOffActive ? "#ffffff" : "#374151",
+            cursor: loading || updating || isOffActive || !!error ? "default" : "pointer",
+          }}
         >
           Tắt (OFF)
         </button>

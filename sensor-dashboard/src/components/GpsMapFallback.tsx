@@ -6,6 +6,8 @@ interface Props {
 }
 
 export default function GpsMapFallback({ data }: Props) {
+  const latestPoint = data[0];
+
   if (data.length === 0) {
     return (
       <div className="h-64 bg-gray-100 rounded-lg flex items-center justify-center">
@@ -36,25 +38,25 @@ export default function GpsMapFallback({ data }: Props) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-blue-50 rounded-lg p-3 text-center">
           <div className="text-2xl font-bold text-blue-600">
-            {data[0]?.latitude.toFixed(6)}
+            {latestPoint ? latestPoint.latitude.toFixed(6) : 'N/A'}
           </div>
           <div className="text-sm text-blue-800">Latest Latitude</div>
         </div>
         <div className="bg-green-50 rounded-lg p-3 text-center">
           <div className="text-2xl font-bold text-green-600">
-            {data[0]?.longitude.toFixed(6)}
+            {latestPoint ? latestPoint.longitude.toFixed(6) : 'N/A'}
           </div>
           <div className="text-sm text-green-800">Latest Longitude</div>
         </div>
         <div className="bg-purple-50 rounded-lg p-3 text-center">
           <div className="text-2xl font-bold text-purple-600">
-            {data[0]?.altitude.toFixed(1)}m
+            {latestPoint ? `${(latestPoint.altitude ?? 0).toFixed(1)}m` : 'N/A'}
           </div>
           <div className="text-sm text-purple-800">Altitude</div>
         </div>
         <div className="bg-orange-50 rounded-lg p-3 text-center">
           <div className="text-2xl font-bold text-orange-600">
-            {data[0]?.speed.toFixed(1)} km/h
+            {latestPoint ? `${(latestPoint.speed ?? 0).toFixed(1)} km/h` : 'N/A'}
           </div>
           <div className="text-sm text-orange-800">Speed</div>
         </div>
@@ -100,10 +102,10 @@ export default function GpsMapFallback({ data }: Props) {
                     {point.longitude.toFixed(6)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {point.altitude.toFixed(2)}m
+                    {(point.altitude ?? 0).toFixed(2)}m
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {point.speed.toFixed(2)} km/h
+                    {(point.speed ?? 0).toFixed(2)} km/h
                   </td>
                 </tr>
               ))}

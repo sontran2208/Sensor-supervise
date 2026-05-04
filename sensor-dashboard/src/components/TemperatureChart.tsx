@@ -1,6 +1,26 @@
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
+import { Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
 import dayjs from 'dayjs';
 import type { TemperatureDoc } from '../hooks/useTemperatureFeed';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 type Props = {
   data: TemperatureDoc[];
@@ -8,53 +28,94 @@ type Props = {
 };
 
 export function TemperatureChart({ data, highlightTimestamp }: Props) {
-  const chartData = data.map((d) => ({
-    t: dayjs(d.timestamp).format('HH:mm:ss'),
-    temperature: d.value,
-    humidity: Number.isFinite(d.humidity) ? Number(d.humidity) : null,
-    ts: d.timestamp,
-  }));
+  const labels = data.map((d) => dayjs(d.timestamp).format('HH:mm:ss'));
+  const highlightIndex = highlightTimestamp
+    ? data.findIndex((d) => d.timestamp === highlightTimestamp)
+    : -1;
 
-  const hl = highlightTimestamp ? dayjs(highlightTimestamp).format('HH:mm:ss') : undefined;
+  const chartData = {
+    labels,
+    datasets: [
+      {
+        label: 'Temperature',
+        data: data.map((d) => d.value),
+        borderColor: 'rgb(239, 68, 68)',
+        backgroundColor: 'rgba(239, 68, 68, 0.2)',
+        borderWidth: 2,
+        tension: 0.25,
+        pointRadius: data.map((_, index) => (index === highlightIndex ? 5 : 0)),
+        pointHoverRadius: data.map((_, index) => (index === highlightIndex ? 6 : 3)),
+        pointBackgroundColor: data.map((_, index) => (index === highlightIndex ? '#b91c1c' : '#ef4444')),
+      },
+      {
+        label: 'Humidity',
+        data: data.map((d) => (Number.isFinite(d.humidity) ? Number(d.humidity) : null)),
+        borderColor: 'rgb(14, 165, 233)',
+        backgroundColor: 'rgba(14, 165, 233, 0.2)',
+        borderWidth: 2,
+        tension: 0.25,
+        spanGaps: true,
+        yAxisID: 'humidity',
+        pointRadius: data.map((_, index) => (index === highlightIndex ? 5 : 0)),
+        pointHoverRadius: data.map((_, index) => (index === highlightIndex ? 6 : 3)),
+        pointBackgroundColor: data.map((_, index) => (index === highlightIndex ? '#0369a1' : '#0ea5e9')),
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: 'index' as const,
+      intersect: false,
+    },
+    plugins: {
+      legend: {
+        position: 'top' as const,
+      },
+      title: {
+        display: true,
+        text: 'Temperature and Humidity Over Time',
+      },
+      tooltip: {
+        callbacks: {
+          label: (context: any) => {
+            const value = Number(context.parsed.y);
+            return context.dataset.label === 'Temperature'
+              ? `${context.dataset.label}: ${value.toFixed(2)} °C`
+              : `${context.dataset.label}: ${value.toFixed(2)} %`;
+          },
+          title: (items: any[]) => `Thời gian ${items[0]?.label ?? ''}`,
+        },
+      },
+    },
+    scales: {
+      y: {
+        type: 'linear' as const,
+        position: 'left' as const,
+        ticks: {
+          callback: (value: number | string) => `${value}°C`,
+        },
+      },
+      humidity: {
+        type: 'linear' as const,
+        position: 'right' as const,
+        min: 0,
+        max: 100,
+        grid: {
+          drawOnChartArea: false,
+        },
+        ticks: {
+          callback: (value: number | string) => `${value}%`,
+        },
+      },
+    },
+  };
 
   return (
     <div className="w-full h-full">
-      <ResponsiveContainer>
-        <LineChart data={chartData} margin={{ left: 8, right: 16, top: 10, bottom: 10 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#3a3a3a" />
-          <XAxis dataKey="t" tick={{ fontSize: 12 }} />
-          <YAxis yAxisId="temp" tick={{ fontSize: 12 }} domain={['auto', 'auto']} unit="°C" />
-          <YAxis yAxisId="humidity" orientation="right" tick={{ fontSize: 12 }} domain={[0, 100]} unit="%" />
-          <Tooltip
-            formatter={(value: number, name: string) =>
-              name === 'temperature' ? `${value.toFixed(2)} °C` : `${value.toFixed(2)} %`
-            }
-            labelFormatter={(l) => `Thời gian ${l}`}
-          />
-          <Line
-            type="monotone"
-            yAxisId="temp"
-            dataKey="temperature"
-            name="temperature"
-            stroke="#ef4444"
-            strokeWidth={2}
-            dot={false}
-            isAnimationActive={false}
-          />
-          <Line
-            type="monotone"
-            yAxisId="humidity"
-            dataKey="humidity"
-            name="humidity"
-            stroke="#0ea5e9"
-            strokeWidth={2}
-            dot={false}
-            isAnimationActive={false}
-            connectNulls
-          />
-          {hl && <ReferenceLine x={hl} stroke="#ef4444" strokeDasharray="4 2" />}
-        </LineChart>
-      </ResponsiveContainer>
+      <Line data={chartData} options={options} />
     </div>
   );
 }

@@ -623,68 +623,6 @@ export class EdgeAnomalyDetector {
     }
   }
 
-  /**
-   * Analyze trend for a sensor using linear regression
-   */
-  private analyzeTrend(sensorType: string, minPoints: number = 10): {
-    slope: number;
-    trend: 'increasing' | 'decreasing' | 'stable';
-    rSquared: number;
-    velocity: number; // rate of change per second
-  } {
-    const history = this.sensorHistory.get(sensorType) || []
-    
-    if (history.length < minPoints) {
-      return { slope: 0, trend: 'stable', rSquared: 0, velocity: 0 }
-    }
-
-    // Use recent points for trend analysis
-    const recent = history.slice(-Math.min(history.length, 50))
-    const n = recent.length
-    
-    // Prepare data: x = time (seconds from first point), y = value
-    const firstTime = recent[0].timestamp
-    const x = recent.map((_, i) => (recent[i].timestamp - firstTime) / 1000) // Convert to seconds
-    const y = recent.map(p => p.value)
-    
-    // Linear regression: y = slope * x + intercept
-    const sumX = x.reduce((a, b) => a + b, 0)
-    const sumY = y.reduce((a, b) => a + b, 0)
-    const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0)
-    const sumXX = x.reduce((sum, xi) => sum + xi * xi, 0)
-
-    const denominator = n * sumXX - sumX * sumX
-    if (Math.abs(denominator) < 1e-10) {
-      return { slope: 0, trend: 'stable', rSquared: 0, velocity: 0 }
-    }
-
-    const slope = (n * sumXY - sumX * sumY) / denominator
-    const intercept = (sumY - slope * sumX) / n
-
-    // Calculate R-squared (coefficient of determination)
-    const yMean = sumY / n
-    const ssRes = y.reduce((sum, yi, i) => {
-      const predicted = slope * x[i] + intercept
-      return sum + Math.pow(yi - predicted, 2)
-    }, 0)
-    const ssTot = y.reduce((sum, yi) => sum + Math.pow(yi - yMean, 2), 0)
-    const rSquared = ssTot > 0 ? Math.max(0, 1 - (ssRes / ssTot)) : 0
-
-    // Determine trend direction
-    const slopeThreshold = 0.001 // Minimum slope to consider as trend (per second)
-    let trend: 'increasing' | 'decreasing' | 'stable' = 'stable'
-    if (slope > slopeThreshold && rSquared > 0.3) {
-      trend = 'increasing'
-    } else if (slope < -slopeThreshold && rSquared > 0.3) {
-      trend = 'decreasing'
-    }
-
-    // Velocity is slope (rate of change per second)
-    const velocity = slope
-
-    return { slope, trend, rSquared, velocity }
-  }
-
   private calculateSpikeJump(features: number[], previousFeatures: number[] | null): number {
     if (!previousFeatures) return 0
 
@@ -704,55 +642,6 @@ export class EdgeAnomalyDetector {
       Math.abs(zVals[3] - prevZ[3]),
       Math.abs(zVals[4] - prevZ[4])
     )
-  }
-
-  /**
-   * Helper method to analyze trend from raw data array
-   */
-  private analyzeTrendFromData(data: Array<{ timestamp: number; value: number }>): {
-    slope: number;
-    trend: 'increasing' | 'decreasing' | 'stable';
-    rSquared: number;
-  } {
-    if (data.length < 2) {
-      return { slope: 0, trend: 'stable', rSquared: 0 }
-    }
-
-    const n = data.length
-    const firstTime = data[0].timestamp
-    const x = data.map((_, i) => (data[i].timestamp - firstTime) / 1000)
-    const y = data.map(p => p.value)
-
-    const sumX = x.reduce((a, b) => a + b, 0)
-    const sumY = y.reduce((a, b) => a + b, 0)
-    const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0)
-    const sumXX = x.reduce((sum, xi) => sum + xi * xi, 0)
-
-    const denominator = n * sumXX - sumX * sumX
-    if (Math.abs(denominator) < 1e-10) {
-      return { slope: 0, trend: 'stable', rSquared: 0 }
-    }
-
-    const slope = (n * sumXY - sumX * sumY) / denominator
-    const intercept = (sumY - slope * sumX) / n
-
-    const yMean = sumY / n
-    const ssRes = y.reduce((sum, yi, i) => {
-      const predicted = slope * x[i] + intercept
-      return sum + Math.pow(yi - predicted, 2)
-    }, 0)
-    const ssTot = y.reduce((sum, yi) => sum + Math.pow(yi - yMean, 2), 0)
-    const rSquared = ssTot > 0 ? Math.max(0, 1 - (ssRes / ssTot)) : 0
-
-    const slopeThreshold = 0.001
-    let trend: 'increasing' | 'decreasing' | 'stable' = 'stable'
-    if (slope > slopeThreshold && rSquared > 0.3) {
-      trend = 'increasing'
-    } else if (slope < -slopeThreshold && rSquared > 0.3) {
-      trend = 'decreasing'
-    }
-
-    return { slope, trend, rSquared }
   }
 
   private determineSeverity(confidence: number, _anomalyType: string): 'low' | 'medium' | 'high' | 'critical' {

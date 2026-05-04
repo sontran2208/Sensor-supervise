@@ -11,6 +11,7 @@ export default function GpsMap({ data }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  const latestPoint = data[0];
 
   const initializeMap = () => {
     if (!mapRef.current || !window.google || !mapRef.current.isConnected) return;
@@ -68,10 +69,10 @@ export default function GpsMap({ data }: Props) {
               <p><strong>Time:</strong> ${new Date(point.timestamp).toLocaleString()}</p>
               <p><strong>Latitude:</strong> ${point.latitude.toFixed(6)}</p>
               <p><strong>Longitude:</strong> ${point.longitude.toFixed(6)}</p>
-              <p><strong>Altitude:</strong> ${point.altitude.toFixed(2)}m</p>
-              <p><strong>Speed:</strong> ${point.speed.toFixed(2)} km/h</p>
-              <p><strong>Satellites:</strong> ${point.satellites}</p>
-              <p><strong>Accuracy:</strong> ${point.accuracy.toFixed(2)}m</p>
+              <p><strong>Altitude:</strong> ${(point.altitude ?? 0).toFixed(2)}m</p>
+              <p><strong>Speed:</strong> ${(point.speed ?? 0).toFixed(2)} km/h</p>
+              <p><strong>Satellites:</strong> ${point.satellites ?? 0}</p>
+              <p><strong>Accuracy:</strong> ${(point.accuracy ?? 0).toFixed(2)}m</p>
             </div>
           `,
         });
@@ -166,25 +167,25 @@ export default function GpsMap({ data }: Props) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-blue-50 rounded-lg p-3 text-center">
           <div className="text-2xl font-bold text-blue-600">
-            {data[0]?.latitude.toFixed(6)}
+            {latestPoint ? latestPoint.latitude.toFixed(6) : 'N/A'}
           </div>
           <div className="text-sm text-blue-800">Latest Latitude</div>
         </div>
         <div className="bg-green-50 rounded-lg p-3 text-center">
           <div className="text-2xl font-bold text-green-600">
-            {data[0]?.longitude.toFixed(6)}
+            {latestPoint ? latestPoint.longitude.toFixed(6) : 'N/A'}
           </div>
           <div className="text-sm text-green-800">Latest Longitude</div>
         </div>
         <div className="bg-purple-50 rounded-lg p-3 text-center">
           <div className="text-2xl font-bold text-purple-600">
-            {data[0]?.altitude.toFixed(1)}m
+            {latestPoint ? `${(latestPoint.altitude ?? 0).toFixed(1)}m` : 'N/A'}
           </div>
           <div className="text-sm text-purple-800">Altitude</div>
         </div>
         <div className="bg-orange-50 rounded-lg p-3 text-center">
           <div className="text-2xl font-bold text-orange-600">
-            {data[0]?.speed.toFixed(1)} km/h
+            {latestPoint ? `${(latestPoint.speed ?? 0).toFixed(1)} km/h` : 'N/A'}
           </div>
           <div className="text-sm text-orange-800">Speed</div>
         </div>

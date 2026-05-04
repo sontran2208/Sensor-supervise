@@ -489,7 +489,7 @@ export default function App() {
               >
                 <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2 sm:mb-3 flex items-center gap-2 flex-wrap">
                   <FaRobot className="text-purple-600" />
-                  AI Activity Monitor
+                  Theo dõi hoạt động AI
                   <motion.span
                     className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
                       systemStatus.isRunning
@@ -504,12 +504,12 @@ export default function App() {
                     {systemStatus.isRunning ? (
                       <>
                         <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                        Active
+                        Đang hoạt động
                       </>
                     ) : (
                       <>
                         <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                        Inactive
+                        Không hoạt động
                       </>
                     )}
                   </motion.span>
@@ -517,47 +517,51 @@ export default function App() {
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-4 text-xs sm:text-sm">
                   <motion.div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow" whileHover={{ scale: 1.05 }}>
-                    <div className="text-gray-600 text-xs">Sensors</div>
+                    <div className="text-gray-600 text-xs">Số cảm biến</div>
                     <div className="text-lg font-semibold text-blue-600">{systemStatus.sensorsConnected}</div>
                   </motion.div>
                   <motion.div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow" whileHover={{ scale: 1.05 }}>
-                    <div className="text-gray-600 text-xs">Active Alerts</div>
+                    <div className="text-gray-600 text-xs">Cảnh báo đang mở</div>
                     <div className={`text-lg font-semibold ${systemStatus.activeAlerts > 0 ? 'text-red-600' : 'text-green-600'}`}>
                       {systemStatus.activeAlerts}
                     </div>
                   </motion.div>
                   <motion.div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow" whileHover={{ scale: 1.05 }}>
-                    <div className="text-gray-600 text-xs">Uptime</div>
+                    <div className="text-gray-600 text-xs">Thời gian chạy</div>
                     <div className="text-lg font-semibold text-purple-600">
                       {Math.floor(systemStatus.uptime / 1000)}s
                     </div>
                   </motion.div>
                   <motion.div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow" whileHover={{ scale: 1.05 }}>
-                    <div className="text-gray-600 text-xs">Health</div>
+                    <div className="text-gray-600 text-xs">Trạng thái hệ thống</div>
                     <div className={`text-lg font-semibold ${
                       systemStatus.systemHealth === 'healthy' ? 'text-green-600' :
                       systemStatus.systemHealth === 'warning' ? 'text-yellow-600' :
                       'text-red-600'
                     }`}>
-                      {systemStatus.systemHealth}
+                      {systemStatus.systemHealth === 'healthy'
+                        ? 'Bình thường'
+                        : systemStatus.systemHealth === 'warning'
+                          ? 'Cảnh báo'
+                          : 'Nghiêm trọng'}
                     </div>
                   </motion.div>
                   {systemStatus.detectorMetrics && (
                     <>
                       <motion.div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow" whileHover={{ scale: 1.05 }}>
-                        <div className="text-gray-600 text-xs">Latest Error</div>
+                        <div className="text-gray-600 text-xs">Sai số tái tạo mới nhất</div>
                         <div className="text-lg font-semibold text-amber-600">
                           {systemStatus.detectorMetrics.latestError === null ? '—' : systemStatus.detectorMetrics.latestError.toFixed(4)}
                         </div>
                       </motion.div>
                       <motion.div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow" whileHover={{ scale: 1.05 }}>
-                        <div className="text-gray-600 text-xs">Global Threshold</div>
+                        <div className="text-gray-600 text-xs">Ngưỡng tổng</div>
                         <div className="text-lg font-semibold text-amber-700">
                           {systemStatus.detectorMetrics.globalThreshold.toFixed(4)}
                         </div>
                       </motion.div>
                       <motion.div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow" whileHover={{ scale: 1.05 }}>
-                        <div className="text-gray-600 text-xs">Sensor Threshold</div>
+                        <div className="text-gray-600 text-xs">Ngưỡng cảm biến</div>
                         <div className="text-lg font-semibold text-cyan-700">
                           {(systemStatus.detectorMetrics.sensorThresholds?.[sensor] ?? 0).toFixed(4)}
                         </div>
@@ -566,9 +570,17 @@ export default function App() {
                   )}
                 </div>
 
+                {systemStatus.detectorMetrics && (
+                  <div className="mt-3 rounded-lg border border-purple-100 bg-white/70 px-3 py-2 text-xs text-gray-600">
+                    Hệ thống xem xét bất thường khi <span className="font-medium text-amber-700">Sai số tái tạo mới nhất</span> vượt
+                    <span className="font-medium text-purple-700"> ngưỡng tổng</span>. Nếu giá trị này nhỏ hơn ngưỡng mà vẫn có cảnh báo,
+                    nguyên nhân có thể đến từ biến động đột ngột của tín hiệu ở thời điểm trước đó.
+                  </div>
+                )}
+
                 {alerts.length > 0 && (
                   <motion.div className="mt-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Recent Alerts (AI Only):</h4>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Cảnh báo AI gần đây:</h4>
                     <div className="space-y-1 max-h-32 overflow-y-auto">
                       {alerts
                         .filter(alert => {
@@ -596,7 +608,7 @@ export default function App() {
                         if (alert.source === 'ai_model') return true;
                         return !alert.message.includes('Spike tại');
                       }).length === 0 && (
-                        <div className="text-xs text-gray-500 text-center py-2">No AI alerts</div>
+                        <div className="text-xs text-gray-500 text-center py-2">Khong co canh bao AI</div>
                       )}
                     </div>
                   </motion.div>
